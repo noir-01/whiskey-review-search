@@ -121,7 +121,7 @@ const SearchBox = () => {
 
   const getData = async (page = 0): Promise<Page<SearchType>> => {
     const value = await fetch(
-      `https://whiskeygallery-review.com:444/api/review/${ 
+      `/api/review/${ 
         isOtherSearch ? "other?" : "whiskey?"
       }${searchInput.trim() ? `andWords=${encodeURIComponent(searchInput.trim())}&` : ""}`
       + (searchOptionA2 ? `andWords=${encodeURIComponent(searchOptionA2)}&` : "")

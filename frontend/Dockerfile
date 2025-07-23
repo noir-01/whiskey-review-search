@@ -16,4 +16,4 @@ RUN yarn build
 CMD ["yarn", "start"]
 
 # Expose port 3000
-EXPOSE 3001
+EXPOSE 3000

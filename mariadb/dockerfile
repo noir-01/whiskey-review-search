@@ -1,0 +1,10 @@
+FROM mariadb:10.6
+
+# Mroonga 플러그인 설치
+RUN apt-get update && \
+    apt-get install -y mariadb-plugin-mroonga && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Mroonga 활성화
+COPY init-mroonga.sql /docker-entrypoint-initdb.d/
