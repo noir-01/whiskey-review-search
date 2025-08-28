@@ -42,6 +42,32 @@ services:
       - "3000"
     networks:
       - proxy-network
+      
+  python-app:
+    build:
+      context: ./backend/dc_crawling
+      dockerfile: Dockerfile
+    image: python-app:v1.0
+    container_name: python-app
+    volumes:
+      - ./backend/dc_crawling:/app 
+    working_dir: /app
+    environment:
+      - TZ=Asia/Seoul
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=${MARIADB_DATABASE}
+      - DB_USER=${MARIADB_USER}
+      - DB_PASSWORD=${MARIADB_PASSWORD}
+      - DISPLAY=:99
+      - GMAIL_EMAIL=${GMAIL_EMAIL}
+      - GMAIL_PW=${GMAIL_PW}
+    depends_on:
+      - mariadb
+    networks:
+      - proxy-network
 
 networks:
   proxy-network:

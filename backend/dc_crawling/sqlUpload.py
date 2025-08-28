@@ -1,29 +1,19 @@
 # -*- coding: utf-8 -*-
 import pymysql
-import json
-import pandas as pd
 import os
 import sys
-import pathlib
-
-path = os.path.join(os.path.dirname(__file__), '..', 'auth')
-sys.path.append(path)
-import mysql_auth
-login = mysql_auth.Info
-
-filePath = os.path.abspath(__file__)
-parent_path = pathlib.Path(filePath).parent
-path = str(parent_path) + "/dc_crawling/database"
+from dotenv import load_dotenv
+load_dotenv()
 
 #mysql에 전달받은 데이터를 업로드.
 #def sqlUpload(category, id,title,nickname,url,recom,reply,postDate):
 def sqlUpload(dataList,category):
     conn = pymysql.connect(
-        host=login['host'],
-        user=login['user'],
-        password=login['password'],
-        db=login['db'],
-        charset=login['charset'],
+        host=os.getenv('MARIADB_HOST'),
+        user=os.getenv('MARIADB_USER'),
+        password=os.getenv('MARIADB_PASSWORD'),
+        db=os.getenv('MARIADB_DATABASE'),
+        charset='utf8mb4',
         use_unicode=True
     )
 

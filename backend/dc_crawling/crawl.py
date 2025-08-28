@@ -9,72 +9,34 @@ import re
 import os
 import sys
 
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s:%(message)s',
+    stream=sys.stdout
+)
+
 #email
 import smtplib
 from email.mime.text import MIMEText
 
 #selenium (searchHead 가져오기) 
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-path = os.path.join(os.path.dirname(__file__), '..', 'auth')
-sys.path.append(path)
-import auth
-
-from sqlUpload import sqlUpload
-login = auth.mysql
-
-import tempfile
-import uuid
-
-user_data_dir = os.path.join(tempfile.gettempdir(), f'chrome-data-{uuid.uuid4()}')
-os.makedirs(user_data_dir, exist_ok=True)
-
 def getTotalPage(url):
     options = Options()
-    
-    # Chromium 브라우저 경로 지정
-    chromium_paths = [
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chromium',
-        '/snap/chromium/current/usr/lib/chromium-browser/chrome'
-    ]
-    
-    chromium_binary = None
-    for path in chromium_paths:
-        if os.path.exists(path):
-            chromium_binary = path
-            break
-    
-    if chromium_binary:
-        options.binary_location = chromium_binary
-    
-    # 라즈베리파이 최적화 옵션
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--disable-dev-tools')
-    options.add_argument('--no-zygote')
-    options.add_argument('--single-process')
-    options.add_argument('--remote-debugging-port=0')
-    options.add_argument('--disable-background-timer-throttling')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    options.add_argument('--disable-renderer-backgrounding')
-    options.add_argument('--memory-pressure-off')  # 라즈베리파이 메모리 최적화
-    
-    # 고유한 사용자 데이터 디렉토리 생성
-    user_data_dir = os.path.join(tempfile.gettempdir(), f'chrome-data-{uuid.uuid4()}-{os.getpid()}')
-    options.add_argument(f'--user-data-dir={user_data_dir}')
-
-    service = Service("/usr/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=options)
+    options.add_argument("--headless")
+    driver = webdriver.Remote(
+        command_executor='http://selenium-chrome:4444/wd/hub',
+        options=options
+    )
     try:
         driver.get(url)
         # 페이지 로딩을 위한 충분한 시간 제공
@@ -127,10 +89,11 @@ def validateSearchHead(liquor, category):
     # Fetch the navigation menu
     try:
         options = Options()
-        options.headless = True  # 브라우저 창을 띄우지 않음
-        service = Service("/usr/bin/chromedriver")
-        # 웹 드라이버 초기화
-        driver = webdriver.Chrome(service=service,options=options)
+        options.add_argument("--headless")
+        driver = webdriver.Remote(
+            command_executor='http://selenium-chrome:4444/wd/hub',
+            options=options
+        )
 
         url = f"https://gall.dcinside.com/mgallery/board/lists/?id={liquor}"  # Replace with your actual base URL
         driver.get(url)
@@ -155,8 +118,8 @@ def validateSearchHead(liquor, category):
         return None
 
 def sendErrorEmail(error_message):
-    sender = auth.gmail["email"]
-    recipient = auth.gmail["email"]
+    sender = os.getenv('GMAIL_EMAIL')
+    recipient = os.getenv('GMAIL_EMAIL')
     subject = "크롤링 실패"
     
     msg = MIMEText(error_message)
@@ -167,7 +130,7 @@ def sendErrorEmail(error_message):
     try:
         smtp_server = smtplib.SMTP('smtp.gmail.com', 587) 
         smtp_server.starttls()
-        smtp_server.login(auth.gmail["email"], auth.gmail["pw"])
+        smtp_server.login(os.getenv('GMAIL_EMAIL'), os.getenv('GMAIL_PW'))
         smtp_server.send_message(msg)
         smtp_server.quit()
         print(f"Error email sent: {error_message}")
@@ -276,6 +239,7 @@ def crawlByPage(liquor,category,dataList,findLastPage=False):
                 dataList.append([id,title,nickname,recom,reply,postDate])
             
             if len(dataList)>=batch_size:
+                print(id)
                 sqlUpload(dataList,category)
                 print(category,len(dataList),"upload completed")
                 dataList.clear()
@@ -284,6 +248,40 @@ def crawlByPage(liquor,category,dataList,findLastPage=False):
     
     #마지막에 남은 데이터 업로드
     sqlUpload(dataList,category)
+
+def sqlUpload(dataList,category):
+    conn = pymysql.connect(
+        host=os.getenv('DB_HOST'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        db=os.getenv('DB_NAME'),
+        charset='utf8mb4',
+        use_unicode=True
+    )
+    print("CONNECTION SET")
+
+    cursor = conn.cursor()
+    cursor.execute("SET NAMES utf8mb4")
+    print("LETS UPLOAD")
+
+    #카테고리에 따라 다른 table을 사용함
+    sql = "REPLACE INTO "
+
+    if(category=="whiskey"):    
+        sql = sql + "whiskey_review" + """(id,title,nickname,recom,reply,post_date) 
+                VALUES(%s,%s,%s,%s,%s,%s)"""
+        cursor.executemany(sql,dataList)
+    else:
+        sql = sql + "other_review" + """(category,id,title,nickname,recom,reply,post_date) 
+                VALUES(%s,%s,%s,%s,%s,%s,%s)"""
+        cursor.executemany(sql,dataList)
+    try:    
+        conn.commit()
+    except Exception as e:
+        print("Commit failed:", e)
+        raise
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':    
