@@ -98,35 +98,51 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         if (andWords != null && !andWords.isEmpty()) {
             for (String word : andWords) {
                 if (StringUtils.hasText(word)) {
-                    queryParts.add("+" + sanitizeMroongaSearchTerm(word.trim()));
+                    String sanitizedWord = sanitizeMroongaSearchTerm(word.trim());
+                    // 공백이 포함된 경우 구문 검색으로 처리
+                    if (word.trim().contains(" ")) {
+                        queryParts.add("+\"" + sanitizedWord + "\"");
+                    } else {
+                        queryParts.add("+" + sanitizedWord);
+                    }
                 }
             }
         }
-        //age는 and 검색
+        
+        // age는 and 검색
         if (StringUtils.hasText(ageKeyword)) {
-            queryParts.add("+" + sanitizeMroongaSearchTerm(ageKeyword.trim()));
+            String sanitizedAge = sanitizeMroongaSearchTerm(ageKeyword.trim());
+            if (ageKeyword.trim().contains(" ")) {
+                queryParts.add("+\"" + sanitizedAge + "\"");
+            } else {
+                queryParts.add("+" + sanitizedAge);
+            }
         }
-        //or word끼리는 () 안 공백으로 구분, 바깥에 and 검색색
+        
+        // or word끼리는 () 안 공백으로 구분, 바깥에 and 검색
         if (orWords != null && !orWords.isEmpty()) {
             List<String> sanitizedOrWords = orWords.stream()
                     .filter(StringUtils::hasText)
-                    .map(word -> sanitizeMroongaSearchTerm(word.trim()))
+                    .map(word -> {
+                        String sanitized = sanitizeMroongaSearchTerm(word.trim());
+                        return word.trim().contains(" ") ? "\"" + sanitized + "\"" : sanitized;
+                    })
                     .toList();
 
             if (!sanitizedOrWords.isEmpty()) {
                 queryParts.add("+(" + String.join(" ", sanitizedOrWords) + ")");
             }
         }
-
         return String.join(" ", queryParts).trim();
     }
+
     private String sanitizeMroongaSearchTerm(String term) {
-        if (term == null) return "";
-        String sanitized = term.trim(); //공백제거
-        // 2. Full-Text Search에서 의미가 있는 특수문자(+, -, <, >, (, ), ~, *, ", @, .)는 이스케이프 처리 또는 제거
-        sanitized = sanitized.replaceAll("[+\\-<>()~*\"@.]", " ");
-        // 3. 여러 공백을 하나로 치환
-        sanitized = sanitized.replaceAll("\\s+", " ");
+        if (term == null || term.trim().isEmpty()) return "";
+        String sanitized = term.trim();
+        // 모든 특수문자를 한 번에 이스케이프 처리
+        sanitized = sanitized.replaceAll("([+\\-<>()~*\"@.\\\\\\[\\]/])", "\\\\$1");
+        sanitized = sanitized.replaceAll("\\s+", " ").trim();
+
         return sanitized;
     }
 
