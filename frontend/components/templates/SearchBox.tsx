@@ -1,4 +1,5 @@
 import React,{ useState,useEffect, KeyboardEvent, useRef,useCallback} from "react";
+import { useRouter } from "next/router";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
@@ -21,6 +22,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import TuneIcon from "@mui/icons-material/Tune";
 
 const SearchBox = () => {
+  const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
   const [searchOptionA2, setSearchOptionA2] = useState("");
   const [searchOptionA3, setSearchOptionA3] = useState("");
@@ -47,6 +49,7 @@ const SearchBox = () => {
   const boxRef = useRef(null);
 
   const [isSearchButtonClicked,setIsSearchButtonClicked] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const BASE_URL = "https://gall.dcinside.com/mgallery/board/view/?id="
   const checkIsEmptyInput = () =>
@@ -58,7 +61,34 @@ const SearchBox = () => {
     searchOptionO3.trim() === "" &&
     age.trim() === ""&&
     nickname.trim()==="";
-  
+
+  // URL 업데이트 함수
+  const updateURLParams = () => {
+    const query: any = {};
+
+    // AND 검색어들
+    const andWords = [searchInput.trim(), searchOptionA2.trim(), searchOptionA3.trim()].filter(Boolean);
+    if (andWords.length > 0) {
+      query.andWords = andWords;
+    }
+
+    // OR 검색어들
+    const orWords = [searchOptionO1.trim(), searchOptionO2.trim(), searchOptionO3.trim()].filter(Boolean);
+    if (orWords.length > 0) {
+      query.orWords = orWords;
+    }
+
+    // 나머지 파라미터들
+    if (age.trim()) query.age = age.trim();
+    if (nickname.trim()) query.nickname = nickname.trim();
+    if (isOtherSearch) query.type = "other";
+
+    // URL 업데이트 (shallow routing으로 페이지 리로드 없이 URL만 변경)
+    router.push({
+      pathname: router.pathname,
+      query: query,
+    }, undefined, { shallow: true });
+  };
 
   const onSearch = () => {
     if (isOpenSearchTools) {
@@ -79,6 +109,10 @@ const SearchBox = () => {
     setDisplayedPost(20);
     setData([]);
     setHasMoreData(false);
+
+    // URL 업데이트
+    updateURLParams();
+
     refetch();
   };
 
@@ -91,33 +125,6 @@ const SearchBox = () => {
       target.blur();
     }
   };
-
-  // const getData = async (): Promise<SearchType[]> => {
-  //   const value = await fetch(
-  //     `https://whiskeygallery-review.com:444${
-  //       isOtherSearch ? "/other" : ""
-  //     }/search/?aSearch1=${encodeURIComponent(searchInput.trim())}&aSearch2=${encodeURIComponent(searchOptionA2)}&aSearch3=${encodeURIComponent(searchOptionA3)
-  //     }&oSearch1=${encodeURIComponent(searchOptionO1)}&oSearch2=${encodeURIComponent(searchOptionO2)}&oSearch3=${encodeURIComponent(searchOptionO3)
-  //     }&age=${encodeURIComponent(age)}&nickname=${encodeURIComponent(nickname)}`
-  //   );
-  //   return value.json();
-  // };
-
-  // const { data, isFetching, isInitialLoading, refetch } = useQuery(
-  //   ["search", searchQuery],
-  //   async () => await getData(),
-  //   {
-  //     enabled: searchQuery !== "",
-  //     keepPreviousData: true,
-  //     refetchOnWindowFocus: false,
-  //     staleTime: 1000 * 60 * 60,
-  //     onSuccess: (data) => {
-  //       if (data.length > 20) setHasMoreData(true);
-  //     },
-  //     onError: (err) =>
-  //       snackbar(`에러가 발생했습니다. 다시 시도해주세요. (error:${err})`),
-  //   }
-  // );
 
   const getData = async (page = 0): Promise<Page<SearchType>> => {
     const value = await fetch(
@@ -189,10 +196,10 @@ const SearchBox = () => {
   );
 
   const handleLoadMore = () => {
-    searchWithPage(displayedPage+1);
+    const nextPage = displayedPage + 1;
+    searchWithPage(nextPage);
     setDisplayedPost((prev) => prev + 20);
-    setDisplayedPage((prev) => prev + 1);
-    //refetch()
+    setDisplayedPage(nextPage);
   };
 
   const isLoading = isInitialLoading;
@@ -212,6 +219,48 @@ const SearchBox = () => {
     setAge("");
     setNickname("");
   };
+
+  // 초기 로드 시 URL 파라미터에서 검색 조건 읽어오기
+  useEffect(() => {
+    if (!router.isReady || !isInitialLoad) return;
+
+    const { andWords, orWords, age: urlAge, nickname: urlNickname, type } = router.query;
+
+    // URL에 검색 파라미터가 있는 경우
+    if (andWords || orWords || urlAge || urlNickname) {
+      // AND 검색어 설정
+      if (andWords) {
+        const andWordsArray = Array.isArray(andWords) ? andWords : [andWords];
+        if (andWordsArray[0]) setSearchInput(andWordsArray[0]);
+        if (andWordsArray[1]) setSearchOptionA2(andWordsArray[1]);
+        if (andWordsArray[2]) setSearchOptionA3(andWordsArray[2]);
+      }
+
+      // OR 검색어 설정
+      if (orWords) {
+        const orWordsArray = Array.isArray(orWords) ? orWords : [orWords];
+        if (orWordsArray[0]) setSearchOptionO1(orWordsArray[0]);
+        if (orWordsArray[1]) setSearchOptionO2(orWordsArray[1]);
+        if (orWordsArray[2]) setSearchOptionO3(orWordsArray[2]);
+      }
+
+      // 나머지 파라미터 설정
+      if (urlAge) setAge(Array.isArray(urlAge) ? urlAge[0] : urlAge);
+      if (urlNickname) setNickname(Array.isArray(urlNickname) ? urlNickname[0] : urlNickname);
+      if (type === "other") setIsOtherSearch(true);
+
+      // 검색 실행
+      setIsSearchButtonClicked(true);
+      setIsInitialLoad(false);
+
+      // 검색 실행 (약간의 지연을 두어 상태가 업데이트된 후 실행)
+      setTimeout(() => {
+        refetch();
+      }, 100);
+    } else {
+      setIsInitialLoad(false);
+    }
+  }, [router.isReady, router.query]);
 
   return (
     <Box
