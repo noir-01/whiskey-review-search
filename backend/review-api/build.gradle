@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.whiskeygallery-review'
-version = '0.0.2'
+version = '0.0.3'
 
 java {
 	toolchain {
@@ -20,6 +20,9 @@ repositories {
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-batch'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	
 	implementation 'org.mariadb.jdbc:mariadb-java-client:3.3.2'
 	implementation 'mysql:mysql-connector-java:8.0.29'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
@@ -37,6 +40,7 @@ dependencies {
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
 }
 
 tasks.named('test') {

@@ -1,5 +1,8 @@
 FROM node:20-alpine
 
+ARG NEXT_PUBLIC_GA_ID
+ENV NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID
+
 WORKDIR /app
 
 # Install dependencies
