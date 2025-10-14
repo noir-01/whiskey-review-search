@@ -4,6 +4,7 @@ import { SnackbarProvider, closeSnackbar } from "notistack";
 import CssBaseline from "@mui/material/CssBaseline";
 import IconButton from "@mui/material/IconButton";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { GoogleAnalytics } from '@next/third-parties/google'
 
 import CloseIcon from "@mui/icons-material/Close";
 
@@ -13,7 +14,7 @@ const App = (props: AppProps) => {
   const meta = {
     description: "위스키 리뷰 검색 & 작성 사이트",
     title: "위스키 리뷰 검색/작성기",
-    url: "https://whiskeyreview.ddns.net",
+    url: "https://whrv.sytes.net",
     image: "/favicon.ico",
   };
 
@@ -34,6 +35,7 @@ const App = (props: AppProps) => {
         <meta name="referrer" content="no-referrer-when-downgrade" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
+      <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID!} />
       <CssBaseline />
       <SnackbarProvider
         action={(snackbarId) => (
