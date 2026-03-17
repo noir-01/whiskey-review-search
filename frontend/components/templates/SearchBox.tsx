@@ -690,7 +690,7 @@ const SearchBox = () => {
                           },
                         }}
                         onClick={() => {
-                          window.open(BASE_URL +item.category + "&no=" + item.id, "_blank");
+                          window.open(BASE_URL + item.gallId + "&no=" + item.id, "_blank");
                           addVisitedList(item.id);
                           setRecentlyVisitedPost(item.id);
                         }}
