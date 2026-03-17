@@ -21,11 +21,23 @@ services:
   backend_lts:
     build:
       context: ./backend/review-api
-    image: whiskey-backend:v2.0
+    image: whiskey-backend:v3.0
     restart: always
     container_name: whiskey-backend-lts
     expose:
       - "8080"
+    depends_on:
+      - mariadb
+    networks:
+      - proxy-network
+  
+  backend_test:
+    build:
+      context: ./backend/review-api
+    image: whiskey-backend:v3.0
+    container_name: whiskey-backend-test
+    ports:
+      - "8081:8080"
     depends_on:
       - mariadb
     networks:
@@ -37,14 +49,42 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
-    image: whiskey-frontend:v2.0
+    image: whiskey-frontend:v3.0
     restart: always
     container_name: whiskey-frontend-lts
     expose:
       - "3000"
     networks:
       - proxy-network
-      
+
+  frontend_test:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+    image: whiskey-frontend:v3.0
+    container_name: whiskey-frontend-test
+    expose:
+      - "3000"
+    networks:
+      - proxy-network
+
+  selenium-chrome:
+    image: seleniarm/standalone-chromium:latest
+    container_name: selenium-chrome
+    shm_size: 2g
+    expose:
+      - "4444"
+    environment:
+      - TZ=Asia/Seoul
+      - SE_NODE_MAX_SESSIONS=5
+      - SE_NODE_SESSION_TIMEOUT=300
+    restart: unless-stopped
+    networks:
+      - proxy-network
+
   python-app:
     build:
       context: ./backend/dc_crawling
@@ -52,7 +92,7 @@ services:
     image: python-app:v1.0
     container_name: python-app
     volumes:
-      - ./backend/dc_crawling:/app 
+      - ./backend/dc_crawling:/app
     working_dir: /app
     environment:
       - TZ=Asia/Seoul
@@ -68,6 +108,7 @@ services:
       - GMAIL_PW=${GMAIL_PW}
     depends_on:
       - mariadb
+      - selenium-chrome
     networks:
       - proxy-network
 
