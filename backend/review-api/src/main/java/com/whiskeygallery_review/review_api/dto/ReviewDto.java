@@ -16,24 +16,5 @@ public class ReviewDto {
     private String nickname;
     private LocalDate postDate;
     private String category;
-
-    public ReviewDto(WhiskeyReview review) {
-        this.id = review.getId();
-        this.title = review.getTitle();
-        this.recommend = review.getRecom();
-        this.reply = review.getReply();
-        this.nickname = review.getNickname();
-        this.postDate = review.getPostDate();
-        this.category = "whiskey";
-    }
-
-    public ReviewDto(OtherReview review) {
-        this.id = review.getId();
-        this.title = review.getTitle();
-        this.recommend = review.getRecom();
-        this.reply = review.getReply();
-        this.nickname = review.getNickname();
-        this.postDate = review.getPostDate();
-        this.category = review.getCategory();
-    }
+    private String gallId;
 }

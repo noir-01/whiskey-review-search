@@ -63,7 +63,7 @@ def getTotalPage(url):
         shutil.rmtree(user_data_dir, ignore_errors=True)
     except:
         pass
-
+#liquor: 실제 갤러리 ID
 def validateSearchHead(liquor, category):
     """
     Validates if the search_head value exists and contains the expected subject string
@@ -71,14 +71,15 @@ def validateSearchHead(liquor, category):
     """
 
     subject_str_dict = {
-        "other": "기타리뷰",
-        "whiskey": "리뷰",
-        "beer": "리뷰",
-        "brandy": "리뷰",
-        "cock_tail": "리뷰",
-        "rum": "리뷰",
-        "nuncestbibendum": "술리뷰🍸",
-        "oaksusu": "리뷰🌽"
+        "other": "기타리뷰"
+        , "whiskey": "리뷰"
+        , "beer": "리뷰"
+        , "brandy": "리뷰"
+        , "cock_tail": "리뷰"
+        , "rum": "리뷰"
+        , "nuncestbibendum": "술리뷰🍸"
+        , "oaksusu": "리뷰🌽"
+        , "distillery-tour": "증류소투어"
     }
     
     expected_text = subject_str_dict.get(category)
@@ -232,8 +233,11 @@ def crawlByPage(liquor,category,dataList,findLastPage=False):
                 postDate_datetime = datetime.strptime(postDate,'%y/%m/%d')
             else:
                 postDate_datetime = datetime.strptime(postDate,'%Y-%m-%d')
-
+            
             if category!="whiskey":
+                #위갤의 증류소투어, 기타리뷰도 whiskey로 접근해야 하지만 DB 레벨에는 의미 구분을 위해서
+                #그냥 저장하기
+                #서비스 레벨(SpringBoot)에서 whiskey로 반환하기
                 dataList.append([category,id,title.strip(),nickname,recom,reply,postDate])
             else:
                 dataList.append([id,title,nickname,recom,reply,postDate])
@@ -285,13 +289,13 @@ def sqlUpload(dataList,category):
 
 
 if __name__ == '__main__':    
-    categoryList = ["whiskey","other", "brandy", "beer", "cock_tail", "rum", "nuncestbibendum"]
+    categoryList = ["whiskey","other", "brandy", "beer", "cock_tail", "rum", "nuncestbibendum","distillery-tour"]
     #categoryList = ["whiskey"]
 
     for category in categoryList:
         dataList = []
         print("\nUPLOAD SQL (category = %s) "%category)
-        if category=="whiskey" or category=="other":
+        if category=="whiskey" or category=="other" or category=="distillery-tour":
             crawlByPage("whiskey",category,dataList)
             #crawlByPage("whiskey",category,dataList,True)
         else:

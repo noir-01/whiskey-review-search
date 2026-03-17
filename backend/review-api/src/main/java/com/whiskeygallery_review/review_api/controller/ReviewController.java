@@ -1,7 +1,6 @@
 package com.whiskeygallery_review.review_api.controller;
 import com.whiskeygallery_review.review_api.dto.ReviewDto;
 import com.whiskeygallery_review.review_api.service.OtherReviewService;
-import com.whiskeygallery_review.review_api.service.ReviewService;
 import com.whiskeygallery_review.review_api.service.WhiskeyReviewService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -15,12 +14,10 @@ import java.util.List;
 @RequestMapping("/api/review")
 public class ReviewController {
     @Autowired
-    private final ReviewService reviewService;
     private final WhiskeyReviewService whiskeyReviewService;
     private final OtherReviewService otherReviewService;
 
-    public ReviewController(ReviewService reviewService,WhiskeyReviewService whiskeyReviewService, OtherReviewService otherReviewService) {
-        this.reviewService = reviewService;
+    public ReviewController(WhiskeyReviewService whiskeyReviewService, OtherReviewService otherReviewService) {
         this.whiskeyReviewService = whiskeyReviewService;
         this.otherReviewService = otherReviewService;
     }
@@ -39,20 +36,8 @@ public class ReviewController {
         Sort.Direction sortDirection = Sort.Direction.valueOf(direction.toUpperCase());
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
-
-        return otherReviewService.searchWithPaging(
-                andWords, orWords, age, nickname, pageRequest
-        ).map(
-                review->new ReviewDto(
-                        review.getId(),
-                        review.getTitle().trim(),
-                        review.getRecom(),
-                        review.getReply(),
-                        review.getNickname(),
-                        review.getPostDate(),
-                        review.getCategory().equals("other") ? "whiskey" : review.getCategory()
-                )
-        );
+        
+        return otherReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, pageRequest);
     }
     @GetMapping("/whiskey")
     public Page<ReviewDto> searchReviews(
@@ -73,18 +58,6 @@ public class ReviewController {
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-        return whiskeyReviewService.searchWithPaging(
-                andWords, orWords, age, nickname, pageRequest
-                ).map(
-                        review->new ReviewDto(
-                                review.getId(),
-                                review.getTitle().trim(),
-                                review.getRecom(),
-                                review.getReply(),
-                                review.getNickname(),
-                                review.getPostDate(),
-                                "whiskey"
-                        )
-        );
+        return whiskeyReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, pageRequest);
     }
 }
