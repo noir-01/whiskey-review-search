@@ -49,7 +49,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
-    image: whiskey-frontend:v3.0
+    image: whiskey-frontend:v4.0
     restart: always
     container_name: whiskey-frontend-lts
     expose:
@@ -64,7 +64,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
-    image: whiskey-frontend:v3.0
+    image: whiskey-frontend:v4.0
     container_name: whiskey-frontend-test
     expose:
       - "3000"

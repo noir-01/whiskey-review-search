@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 ARG NEXT_PUBLIC_GA_ID
 ENV NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID
@@ -15,8 +15,12 @@ COPY . .
 # Build application
 RUN yarn build
 
-# Start the application
-CMD ["yarn", "start"]
+# Stage 2: serve with nginx
+FROM nginx:alpine
 
-# Expose port 3000
+COPY --from=builder /app/out /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
 EXPOSE 3000
+
+CMD ["nginx", "-g", "daemon off;"]
