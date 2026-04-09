@@ -17,14 +17,14 @@ const CustomDialog = ({
       if (e.key == "Escape") onClose();
       else if (e.key == "Enter") onClick();
     }}
-    onBackdropClick={onClose}
+    onClose={onClose}
   >
     <DialogContent sx={{ fontWeight: 700 }}>{content}</DialogContent>
     <DialogActions
       sx={{
         button: {
           color: "#755139",
-          ":hover": { bgcolor: "transperent" },
+          ":hover": { bgcolor: "transparent" },
         },
       }}
     >
