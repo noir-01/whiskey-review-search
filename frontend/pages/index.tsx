@@ -15,15 +15,6 @@ export default function Home() {
   const [isSearchBox, setIsSearchBox] = useState(true);
 
   useEffect(() => {
-    window.onbeforeunload = async (event) => {
-      event.preventDefault();
-      return "";
-    };
-
-    return () => {
-      window.onbeforeunload = null;
-    };
-
     const handleRouteChange = (url: URL) => {
       gtag.pageview(url);
     };
