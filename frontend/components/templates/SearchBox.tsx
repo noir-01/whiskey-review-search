@@ -10,6 +10,8 @@ import ListItemButton from "@mui/material/ListItemButton";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 import CustomLoading from "@/components/atoms/CustomLoading";
 import DropDownOption from "@/components/atoms/DropDownOption";
@@ -50,6 +52,9 @@ const SearchBox = () => {
 
   const [isSearchButtonClicked,setIsSearchButtonClicked] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 
   const BASE_URL = "https://gall.dcinside.com/mgallery/board/view/?id="
   const checkIsEmptyInput = () =>
@@ -690,7 +695,12 @@ const SearchBox = () => {
                           },
                         }}
                         onClick={() => {
-                          window.open(BASE_URL + item.gallId + "&no=" + item.id, "_blank");
+                          window.open(
+                            isMobile
+                              ? `https://m.dcinside.com/board/${item.gallId}/${item.id}`
+                              : BASE_URL + item.gallId + "&no=" + item.id,
+                            "_blank"
+                          );
                           addVisitedList(item.id);
                           setRecentlyVisitedPost(item.id);
                         }}
