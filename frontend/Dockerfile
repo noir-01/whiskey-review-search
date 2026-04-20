@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 ARG NEXT_PUBLIC_GA_ID
 ENV NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID
 
+ARG DISABLE_PWA=false
+ENV DISABLE_PWA=$DISABLE_PWA
+
 WORKDIR /app
 
 # Install dependencies

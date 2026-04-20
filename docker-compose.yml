@@ -64,7 +64,8 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
-    image: whiskey-frontend:v4.0
+        - DISABLE_PWA=true
+    image: whiskey-frontend:v5.0
     container_name: whiskey-frontend-test
     expose:
       - "3000"
