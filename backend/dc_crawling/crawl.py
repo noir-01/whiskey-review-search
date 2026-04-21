@@ -67,7 +67,7 @@ def getTotalPage(url):
 def validateSearchHead(liquor, category):
     """
     Validates if the search_head value exists and contains the expected subject string
-    Returns the valid search_head or None if validation fails
+    Returns the valid search_head or raises RuntimeError if validation fails
     """
 
     subject_str_dict = {
@@ -81,22 +81,23 @@ def validateSearchHead(liquor, category):
         , "oaksusu": "리뷰🌽"
         , "distillery-tour": "증류소투어"
     }
-    
+
     expected_text = subject_str_dict.get(category)
     if not expected_text:
-        sendErrorEmail(f"Invalid category: {category}")
-        return None
-    
+        raise RuntimeError(f"Invalid category: {category}")
+
     # Fetch the navigation menu
     try:
         options = Options()
         options.add_argument("--headless")
+        options.page_load_strategy = "eager"
         driver = webdriver.Remote(
             command_executor='http://selenium-chrome:4444/wd/hub',
             options=options
         )
 
         url = f"https://gall.dcinside.com/mgallery/board/lists/?id={liquor}"  # Replace with your actual base URL
+        driver.set_page_load_timeout(20)
         driver.get(url)
         time.sleep(3)
         html = driver.page_source
@@ -111,12 +112,12 @@ def validateSearchHead(liquor, category):
                     driver.quit()
                     return int(head_id)
 
-        sendErrorEmail(f"{liquor}갤 '{expected_text}' 없음")
-        return None
-        
+        raise RuntimeError(f"{liquor}갤 '{expected_text}' 없음")
+
+    except RuntimeError:
+        raise
     except Exception as e:
-        sendErrorEmail(f"Error validating search_head: {str(e)}")
-        return None
+        raise RuntimeError(f"Error validating search_head: {str(e)}") from e
 
 def sendErrorEmail(error_message):
     sender = os.getenv('GMAIL_EMAIL')
@@ -143,9 +144,6 @@ def sendErrorEmail(error_message):
 def crawlByPage(liquor,category,dataList,findLastPage=False):
 
     search_head = validateSearchHead(liquor, category)
-    if not search_head:
-        print("Validation failed. Exiting.")
-        return
     
     
     # 헤더 설정
@@ -288,16 +286,46 @@ def sqlUpload(dataList,category):
         conn.close()
 
 
-if __name__ == '__main__':    
+if __name__ == '__main__':
     categoryList = ["whiskey","other", "brandy", "beer", "cock_tail", "rum", "nuncestbibendum","distillery-tour"]
     #categoryList = ["whiskey"]
 
-    for category in categoryList:
-        dataList = []
-        print("\nUPLOAD SQL (category = %s) "%category)
-        if category=="whiskey" or category=="other" or category=="distillery-tour":
-            crawlByPage("whiskey",category,dataList)
-            #crawlByPage("whiskey",category,dataList,True)
+    MAX_RETRIES = 3
+    RETRY_DELAY = 300 #재시도=5분
+
+    pending = list(categoryList)
+    for attempt in range(1, MAX_RETRIES + 1):
+        failed = []
+        for category in pending:
+            try:
+                dataList = []
+                print(f"\nUPLOAD SQL (category = {category})")
+                if category in ("whiskey", "other", "distillery-tour"):
+                    crawlByPage("whiskey", category, dataList)
+                    #crawlByPage("whiskey", category, dataList, True)
+                else:
+                    crawlByPage(category, category, dataList)
+                    #crawlByPage(category, category, dataList, True)
+            except Exception as e:
+                logging.error(f"[시도 {attempt}] {category} 실패: {e}")
+                failed.append((category, str(e)))
+
+        if not failed:
+            sys.exit(0)
+
+        failed_names = [c for c, _ in failed]
+        failed_detail = "\n".join(f"  - {c}: {e}" for c, e in failed)
+        if attempt < MAX_RETRIES:
+            sendErrorEmail(
+                f"[시도 {attempt}/{MAX_RETRIES}] 실패 카테고리: {failed_names}\n\n{failed_detail}\n\n"
+                f"{RETRY_DELAY // 60}분 후 재시도합니다."
+            )
+            logging.warning(f"[시도 {attempt}] 실패: {failed_names}, {RETRY_DELAY}초 후 재시도")
+            time.sleep(RETRY_DELAY)
+            pending = failed_names
         else:
-            crawlByPage(category, category,dataList)
-            #crawlByPage(category, category,dataList,True)
+            sendErrorEmail(
+                f"[최종 실패] {MAX_RETRIES}회 시도 후 포기\n\n실패 카테고리: {failed_names}\n\n{failed_detail}"
+            )
+            logging.error(f"[최종 실패] {MAX_RETRIES}회 시도 후 포기: {failed_names}")
+            sys.exit(1)
