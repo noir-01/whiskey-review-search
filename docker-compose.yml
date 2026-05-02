@@ -21,7 +21,7 @@ services:
   backend_lts:
     build:
       context: ./backend/review-api
-    image: whiskey-backend:v4.0
+    image: whiskey-backend:v5.1
     restart: always
     container_name: whiskey-backend-lts
     expose:
@@ -34,7 +34,7 @@ services:
   backend_test:
     build:
       context: ./backend/review-api
-    image: whiskey-backend:v4.0
+    image: whiskey-backend:v5.1
     container_name: whiskey-backend-test
     ports:
       - "8081:8080"
@@ -49,7 +49,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
-    image: whiskey-frontend:v5.0
+    image: whiskey-frontend:v5.1
     restart: always
     container_name: whiskey-frontend-lts
     expose:
@@ -65,10 +65,29 @@ services:
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
         - DISABLE_PWA=true
-    image: whiskey-frontend:v5.0
+    image: whiskey-frontend:v5.1
     container_name: whiskey-frontend-test
     expose:
       - "3000"
+    networks:
+      - proxy-network
+  
+  frontend_dev:
+    profiles: ["test"]
+    image: node:20-alpine
+    container_name: whiskey-frontend-dev
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - whiskey_frontend_node_modules:/app/node_modules
+    environment:
+      - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+      - DISABLE_PWA=true
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    command: sh -c "yarn install --frozen-lockfile && yarn dev --hostname 0.0.0.0"
     networks:
       - proxy-network
 
