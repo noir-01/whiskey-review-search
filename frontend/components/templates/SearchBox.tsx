@@ -2,7 +2,9 @@ import React,{ useState,useEffect, KeyboardEvent, useRef,useCallback} from "reac
 import { useRouter } from "next/router";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import Grid from "@mui/material/Grid";
 import IconButton from "@mui/material/IconButton";
 import InputBase from "@mui/material/InputBase";
@@ -22,6 +24,16 @@ import snackbar from "@/utils/snackbar";
 import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
 import SearchIcon from "@mui/icons-material/Search";
 import TuneIcon from "@mui/icons-material/Tune";
+
+const GALL_NAME_MAP: Record<string, string> = {
+  whiskey: "위스키",
+  beer: "크래프트맥주",
+  brandy: "브랜디",
+  cock_tail: "칵테일",
+  nuncestbibendum: "세계주류",
+  rum: "럼",
+};
+const ALL_OTHER_GALL_IDS = Object.keys(GALL_NAME_MAP);
 
 const SearchBox = () => {
   const router = useRouter();
@@ -44,6 +56,7 @@ const SearchBox = () => {
 
   const [isOpenSearchTools, setIsOpenSearchTools] = useState(true);
   const [isOtherSearch, setIsOtherSearch] = useState(false);
+  const [selectedGallIds, setSelectedGallIds] = useState<Set<string>>(new Set(ALL_OTHER_GALL_IDS));
   const [sortOption, setSortOption] = useState<SortOptionType>("최신순");
 
   const [visitedPostList, setVisitedPostList] = useState<number[]>([]);
@@ -134,8 +147,12 @@ const SearchBox = () => {
   };
 
   const getData = async (page = 0): Promise<Page<SearchType>> => {
+    const gallIdsQuery = isOtherSearch
+      ? Array.from(selectedGallIds).map(id => `gallIds=${encodeURIComponent(id)}`).join('&')
+      : '';
+
     const value = await fetch(
-      `/api/review/${ 
+      `/api/review/${
         isOtherSearch ? "other?" : "whiskey?"
       }${searchInput.trim() ? `andWords=${encodeURIComponent(searchInput.trim())}&` : ""}`
       + (searchOptionA2 ? `andWords=${encodeURIComponent(searchOptionA2)}&` : "")
@@ -146,6 +163,7 @@ const SearchBox = () => {
       + (age ? `age=${encodeURIComponent(age)}&` : "")
       + (nickname ? `nickname=${encodeURIComponent(nickname)}&` : "")
       + (notWord ? `notWord=${encodeURIComponent(notWord)}&` : "")
+      + (gallIdsQuery ? gallIdsQuery + '&' : '')
       + `page=${page}&size=20&sortField=postDate&direction=DESC`
     );
     return value.json();
@@ -276,8 +294,20 @@ const SearchBox = () => {
     <Box
       sx={{
         backgroundColor: "#F2EDD7",
-        mt: isLoading || isSearchButtonClicked  ? 0 : isOpenSearchTools ? "30vh" : "35vh",
-        mb: isSearchButtonClicked  ? 0 : isOpenSearchTools ? "30vh" : "50vh",
+        height: isSearchButtonClicked ? "100dvh" : "auto",
+        overflow: isSearchButtonClicked ? "hidden" : "visible",
+        display: "flex",
+        flexDirection: "column",
+        mt: isLoading || isSearchButtonClicked
+          ? 0
+          : isOpenSearchTools
+            ? (isOtherSearch ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" } : "30vh")
+            : "35vh",
+        mb: isSearchButtonClicked
+          ? 0
+          : isOpenSearchTools
+            ? (isOtherSearch ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" } : "30vh")
+            : "50vh",
         transition: ".5s",
         maxWidth: "680px",
       }}
@@ -350,41 +380,28 @@ const SearchBox = () => {
               aria-label="search"
               onClick={onSearch}
               sx={{
+                display: isOpenSearchTools ? "none" : "inline-flex",
                 position: "absolute",
-                top: isOpenSearchTools ? "220px" : "4px",
-                right: isOpenSearchTools ? "8px" : "12px",
+                top: "4px",
+                right: "12px",
                 minWidth: 0,
-                bgcolor: isOpenSearchTools ? "#755139" : "transparent",
-                color: isOpenSearchTools ? "white" : "gray",
+                bgcolor: "transparent",
+                color: "gray",
                 transition: ".5s",
-                px: isOpenSearchTools ? 11 : 1,
-                height: isOpenSearchTools ? "36px" : "32px",
-                width: isOpenSearchTools ? "97%" : 0,
+                px: 1,
+                height: "32px",
 
                 ":active": {
-                  bgcolor: isOpenSearchTools ? "#755139" : "transparent",
+                  bgcolor: "transparent",
                 },
                 ":hover": {
-                  bgcolor: isOpenSearchTools ? "#755139" : "transparent",
+                  bgcolor: "transparent",
                 },
                 ":disabled": {
                   opacity: 0.8,
                 },
               }}
             >
-              <Typography
-                variant="body1"
-                sx={{
-                  transition: ".5s",
-                  overflow: "hidden",
-                  whiteSpace: "nowrap",
-                  fontWeight: 700,
-                  color: "white",
-                  px: isOpenSearchTools ? 1 : 0,
-                }}
-              >
-                상세 검색하기
-              </Typography>
               <SearchIcon />
             </Button>
           </Box>
@@ -392,7 +409,11 @@ const SearchBox = () => {
           <Box
             sx={{
               width: "100%",
-              height: isOpenSearchTools ? "264px" : 0,
+              maxHeight: isOpenSearchTools
+                ? isOtherSearch
+                  ? { xs: "360px", md: "320px" }
+                  : "280px"
+                : 0,
               overflow: "hidden",
               transition: ".5s",
             }}
@@ -590,6 +611,109 @@ const SearchBox = () => {
                 {isOtherSearch ? "리뷰 검색기" : "기타 리뷰 검색기"}
               </Button>
             </Box>
+            {isOtherSearch && (
+              <Box sx={{ display: "flex", width: "100%", mt: 1, mb: 0, gap: 1.5, alignItems: "center" }}>
+                <Box
+                  sx={{
+                    backgroundColor: "#755139",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    alignSelf: "flex-start",
+                    color: "white",
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    p: 0.5,
+                    pb: 0,
+                    width: "58px",
+                    flexShrink: 0,
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  갤러리
+                </Box>
+                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={selectedGallIds.size === ALL_OTHER_GALL_IDS.length}
+                        indeterminate={selectedGallIds.size > 0 && selectedGallIds.size < ALL_OTHER_GALL_IDS.length}
+                        onChange={() =>
+                          setSelectedGallIds(
+                            selectedGallIds.size === ALL_OTHER_GALL_IDS.length
+                              ? new Set()
+                              : new Set(ALL_OTHER_GALL_IDS)
+                          )
+                        }
+                        sx={{ color: "#755139", "&.Mui-checked, &.MuiCheckbox-indeterminate": { color: "#755139" }, py: 0, px: "2px" }}
+                      />
+                    }
+                    label="전체"
+                    sx={{ mr: 1.5, "& .MuiFormControlLabel-label": { fontSize: "0.8rem", fontWeight: 700 } }}
+                  />
+                  {ALL_OTHER_GALL_IDS.map((gallId) => (
+                    <FormControlLabel
+                      key={gallId}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectedGallIds.has(gallId)}
+                          onChange={() =>
+                            setSelectedGallIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(gallId)) next.delete(gallId);
+                              else next.add(gallId);
+                              return next;
+                            })
+                          }
+                          sx={{ color: "#755139", "&.Mui-checked": { color: "#755139" }, py: 0, px: "2px" }}
+                        />
+                      }
+                      label={GALL_NAME_MAP[gallId]}
+                      sx={{ mr: 1.5, "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+            <Button
+              size="small"
+              disabled={isLoading}
+              aria-label="detail search"
+              onClick={onSearch}
+              sx={{
+                mt: 1,
+                mb: 1,
+                width: "100%",
+                bgcolor: "#755139",
+                color: "white",
+                height: "36px",
+                fontWeight: 700,
+
+                ":active": {
+                  bgcolor: "#755139",
+                },
+                ":hover": {
+                  bgcolor: "#755139",
+                },
+                ":disabled": {
+                  opacity: 0.8,
+                },
+              }}
+            >
+              <Typography
+                variant="body1"
+                sx={{
+                  fontWeight: 700,
+                  color: "white",
+                  px: 1,
+                }}
+              >
+                상세 검색하기
+              </Typography>
+              <SearchIcon />
+            </Button>
           </Box>
         </Paper>
       </Box>
@@ -659,9 +783,12 @@ const SearchBox = () => {
             <Box ref={boxRef}
               sx={{
                 height: isOpenSearchTools
-                  ? "calc(100vh - 424px)"
-                  : "calc(100vh - 240px)",
+                  ? isOtherSearch 
+                    ? { xs: "calc(100dvh - 500px)", md: "calc(100dvh - 464px)" } 
+                    : { xs: "calc(100dvh - 530px)", md: "calc(100dvh - 424px)" }
+                  : "calc(100dvh - 240px)",
                 transition: ".5s",
+                boxSizing: "border-box",
                 overflow: "auto",
                 p: "6px",
 
