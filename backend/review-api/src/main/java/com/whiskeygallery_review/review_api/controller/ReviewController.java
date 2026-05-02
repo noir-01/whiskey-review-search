@@ -28,6 +28,7 @@ public class ReviewController {
             @RequestParam(required = false) List<String> orWords,
             @RequestParam(required = false) String age,
             @RequestParam(required = false) String nickname,
+            @RequestParam(required = false) String notWord,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "postDate") String sortField,
@@ -36,28 +37,26 @@ public class ReviewController {
         Sort.Direction sortDirection = Sort.Direction.valueOf(direction.toUpperCase());
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
-        
-        return otherReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, pageRequest);
+
+        return otherReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
     }
+
     @GetMapping("/whiskey")
     public Page<ReviewDto> searchReviews(
             @RequestParam(required = false) List<String> andWords,
             @RequestParam(required = false) List<String> orWords,
             @RequestParam(required = false) String age,
             @RequestParam(required = false) String nickname,
+            @RequestParam(required = false) String notWord,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortField,
             @RequestParam(defaultValue = "DESC") String direction) {
 
-        if(andWords!=null){
-            System.out.println(String.join(", ", andWords));
-        }
-
         Sort.Direction sortDirection = Sort.Direction.valueOf(direction.toUpperCase());
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-        return whiskeyReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, pageRequest);
+        return whiskeyReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
     }
 }

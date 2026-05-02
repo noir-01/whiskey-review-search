@@ -9,6 +9,6 @@ import java.util.List;
 //paging 적용 위한 custom repo, custom 사용 안할 시 jpaRepo 직접 implement(불가능)
 public interface BaseReviewCustomRepository<T extends BaseReview> {
 
-    Page<T> searchWithPaging(List<String> andWords, List<String> orWords, String age, String nickname, Pageable pageable);
+    Page<T> searchWithPaging(List<String> andWords, List<String> orWords, String age, String nickname, String notWord, Pageable pageable);
 }
 

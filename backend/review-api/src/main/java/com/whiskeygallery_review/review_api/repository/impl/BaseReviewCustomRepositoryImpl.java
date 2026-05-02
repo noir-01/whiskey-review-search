@@ -147,14 +147,20 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
     }
 
     @Override
-    public Page<T> searchWithPaging(List<String> andWords, List<String> orWords, String age, String nickname, Pageable pageable) {
-        // Mroonga 검색어가 있는 경우 Native Query 사용
+    public Page<T> searchWithPaging(List<String> andWords, List<String> orWords, String age, String nickname, String notWord, Pageable pageable) {
         String mroongaSearchQuery = buildMroongaQuery(andWords, orWords, age);
-        
+
+        if (StringUtils.hasText(notWord)) {
+            String sanitizedNot = sanitizeMroongaSearchTerm(notWord.trim());
+            String notPart = notWord.trim().contains(" ") ? "-\"" + sanitizedNot + "\"" : "-" + sanitizedNot;
+            mroongaSearchQuery = StringUtils.hasText(mroongaSearchQuery)
+                    ? mroongaSearchQuery + " " + notPart
+                    : notPart;
+        }
+
         if (StringUtils.hasText(mroongaSearchQuery)) {
             return searchWithNativeQuery(mroongaSearchQuery, nickname, pageable);
         } else {
-            // 닉네임만 검색일 경우
             return searchWithQueryDSL(nickname, pageable);
         }
     }
