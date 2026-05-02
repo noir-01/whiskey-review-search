@@ -29,6 +29,7 @@ public class ReviewController {
             @RequestParam(required = false) String age,
             @RequestParam(required = false) String nickname,
             @RequestParam(required = false) String notWord,
+            @RequestParam(required = false) List<String> gallIds,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "postDate") String sortField,
@@ -38,7 +39,7 @@ public class ReviewController {
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-        return otherReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
+        return otherReviewService.searchDtoWithPagingByGallIds(andWords, orWords, age, gallIds, nickname, notWord, pageRequest);
     }
 
     @GetMapping("/whiskey")

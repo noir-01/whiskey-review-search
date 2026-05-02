@@ -11,6 +11,6 @@ public class WhiskeyReviewRepositoryImpl extends BaseReviewCustomRepositoryImpl<
         JPAQueryFactory queryFactory,
         EntityManager entityManager
         ) {
-        super(queryFactory, entityManager, QWhiskeyReview.whiskeyReview, QWhiskeyReview.whiskeyReview.title, QWhiskeyReview.whiskeyReview.nickname);
+        super(queryFactory, entityManager, QWhiskeyReview.whiskeyReview, QWhiskeyReview.whiskeyReview.title, QWhiskeyReview.whiskeyReview.nickname, null);
     }
 }

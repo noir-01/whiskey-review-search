@@ -18,16 +18,6 @@ public abstract class BaseReviewService<T extends BaseReview> {
         this.baseReviewRepository = baseReviewRepository;
     }
 
-    public Page<T> searchWithPaging(
-            List<String> andWords,
-            List<String> orWords,
-            String age,
-            String nickname,
-            String notWord,
-            Pageable pageable) {
-        return baseReviewRepository.searchWithPaging(andWords, orWords, age, nickname, notWord, pageable);
-    }
-
     public Page<ReviewDto> searchDtoWithPaging(
             List<String> andWords,
             List<String> orWords,
@@ -36,7 +26,19 @@ public abstract class BaseReviewService<T extends BaseReview> {
             String notWord,
             Pageable pageable
     ) {
-        return searchWithPaging(andWords, orWords, age, nickname, notWord, pageable)
+        return searchDtoWithPaging(andWords, orWords, age, nickname, notWord, null, pageable);
+    }
+
+    public Page<ReviewDto> searchDtoWithPaging(
+            List<String> andWords,
+            List<String> orWords,
+            String age,
+            String nickname,
+            String notWord,
+            List<String> categories,
+            Pageable pageable
+    ) {
+        return baseReviewRepository.searchWithPaging(andWords, orWords, age, nickname, notWord, categories, pageable)
                 .map(this::toDto);
     }
 

@@ -1,16 +1,14 @@
 package com.whiskeygallery_review.review_api.service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import com.whiskeygallery_review.review_api.entity.OtherReview;
-import com.whiskeygallery_review.review_api.entity.WhiskeyReview;
 import com.whiskeygallery_review.review_api.repository.OtherReviewRepository;
-import com.whiskeygallery_review.review_api.repository.WhiskeyReviewRepository;
 import com.whiskeygallery_review.review_api.dto.ReviewDto;
 
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 @Service
@@ -18,6 +16,35 @@ public class OtherReviewService extends BaseReviewService<OtherReview> {
 
     public OtherReviewService(OtherReviewRepository otherReviewRepository) {
         super(otherReviewRepository);
+    }
+
+    public Page<ReviewDto> searchDtoWithPagingByGallIds(
+            List<String> andWords,
+            List<String> orWords,
+            String age,
+            List<String> gallIds,
+            String nickname,
+            String notWord,
+            Pageable pageable
+    ) {
+        List<String> categories = gallIdsToDbCategories(gallIds);
+        return searchDtoWithPaging(andWords, orWords, age, nickname, notWord, categories, pageable);
+    }
+
+    // frontend gallId → DB category 변환
+    // "whiskey" gallId는 DB에서 "other", "distillery-tour" 두 카테고리에 해당
+    private List<String> gallIdsToDbCategories(List<String> gallIds) {
+        if (gallIds == null || gallIds.isEmpty()) return null;
+        List<String> categories = new ArrayList<>();
+        for (String gallId : gallIds) {
+            if ("whiskey".equals(gallId)) {
+                categories.add("other");
+                categories.add("distillery-tour");
+            } else {
+                categories.add(gallId);
+            }
+        }
+        return categories;
     }
 
     @Override
