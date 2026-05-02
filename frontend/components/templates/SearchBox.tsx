@@ -33,6 +33,7 @@ const SearchBox = () => {
   const [searchOptionO3, setSearchOptionO3] = useState("");
   const [age, setAge] = useState("");
   const [nickname, setNickname] = useState("");
+  const [notWord, setNotWord] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [displayedPost, setDisplayedPost] = useState(20);
@@ -64,8 +65,8 @@ const SearchBox = () => {
     searchOptionO1.trim() === "" &&
     searchOptionO2.trim() === "" &&
     searchOptionO3.trim() === "" &&
-    age.trim() === ""&&
-    nickname.trim()==="";
+    age.trim() === "" &&
+    nickname.trim() === "";
 
   // URL 업데이트 함수
   const updateURLParams = () => {
@@ -86,6 +87,7 @@ const SearchBox = () => {
     // 나머지 파라미터들
     if (age.trim()) query.age = age.trim();
     if (nickname.trim()) query.nickname = nickname.trim();
+    if (notWord.trim()) query.notWord = notWord.trim();
     if (isOtherSearch) query.type = "other";
 
     // URL 업데이트 (shallow routing으로 페이지 리로드 없이 URL만 변경)
@@ -143,6 +145,7 @@ const SearchBox = () => {
       + (searchOptionO3 ? `orWords=${encodeURIComponent(searchOptionO3)}&` : "")
       + (age ? `age=${encodeURIComponent(age)}&` : "")
       + (nickname ? `nickname=${encodeURIComponent(nickname)}&` : "")
+      + (notWord ? `notWord=${encodeURIComponent(notWord)}&` : "")
       + `page=${page}&size=20&sortField=postDate&direction=DESC`
     );
     return value.json();
@@ -223,16 +226,17 @@ const SearchBox = () => {
     setSearchOptionO3("");
     setAge("");
     setNickname("");
+    setNotWord("");
   };
 
   // 초기 로드 시 URL 파라미터에서 검색 조건 읽어오기
   useEffect(() => {
     if (!router.isReady || !isInitialLoad) return;
 
-    const { andWords, orWords, age: urlAge, nickname: urlNickname, type } = router.query;
+    const { andWords, orWords, age: urlAge, nickname: urlNickname, notWord: urlNotWord, type } = router.query;
 
     // URL에 검색 파라미터가 있는 경우
-    if (andWords || orWords || urlAge || urlNickname) {
+    if (andWords || orWords || urlAge || urlNickname || urlNotWord) {
       // AND 검색어 설정
       if (andWords) {
         const andWordsArray = Array.isArray(andWords) ? andWords : [andWords];
@@ -252,6 +256,7 @@ const SearchBox = () => {
       // 나머지 파라미터 설정
       if (urlAge) setAge(Array.isArray(urlAge) ? urlAge[0] : urlAge);
       if (urlNickname) setNickname(Array.isArray(urlNickname) ? urlNickname[0] : urlNickname);
+      if (urlNotWord) setNotWord(Array.isArray(urlNotWord) ? urlNotWord[0] : urlNotWord);
       if (type === "other") setIsOtherSearch(true);
 
       // 검색 실행
@@ -346,7 +351,7 @@ const SearchBox = () => {
               onClick={onSearch}
               sx={{
                 position: "absolute",
-                top: isOpenSearchTools ? "176px" : "4px",
+                top: isOpenSearchTools ? "220px" : "4px",
                 right: isOpenSearchTools ? "8px" : "12px",
                 minWidth: 0,
                 bgcolor: isOpenSearchTools ? "#755139" : "transparent",
@@ -387,7 +392,7 @@ const SearchBox = () => {
           <Box
             sx={{
               width: "100%",
-              height: isOpenSearchTools ? "220px" : 0,
+              height: isOpenSearchTools ? "264px" : 0,
               overflow: "hidden",
               transition: ".5s",
             }}
@@ -507,19 +512,6 @@ const SearchBox = () => {
                 onKeyPress={enterKeyEventOnSearch}
                 sx={{ flex: 1 }}
               />
-              <Button
-                  variant="contained"
-                  disabled={checkIsEmptyInput()}
-                  onClick={handleDeleteAllInput}
-                  sx={{
-                    display: "flex",
-                    bgcolor: "#755139",
-                    ":active": { bgcolor: "#755139" },
-                    ":hover": { bgcolor: "#755139" },
-                  }}
-                >
-                  입력 지우기
-                </Button>
             </Box>
             <Box sx={{ display: "flex", width: "100%", my: 1, gap: 1 }}>
               <Box
@@ -546,22 +538,57 @@ const SearchBox = () => {
                 onKeyPress={enterKeyEventOnSearch}
                 sx={{ flex: 1 }}
               />
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <Button
-                  variant="contained"
-                  disabled={isLoading}
-                  sx={{
-                    flex: 1,
-                    bgcolor: "#755139",
-
-                    ":active": { bgcolor: "#755139" },
-                    ":hover": { bgcolor: "#755139" },
-                  }}
-                  onClick={() => setIsOtherSearch(!isOtherSearch)}
-                >
-                  {isOtherSearch ? "리뷰 검색기" : "기타 리뷰 검색기"}
-                </Button>
+              <Button
+                variant="contained"
+                disabled={checkIsEmptyInput()}
+                onClick={handleDeleteAllInput}
+                sx={{
+                  display: "flex",
+                  bgcolor: "#755139",
+                  ":active": { bgcolor: "#755139" },
+                  ":hover": { bgcolor: "#755139" },
+                }}
+              >
+                입력 지우기
+              </Button>
+            </Box>
+            <Box sx={{ display: "flex", width: "100%", my: 1, gap: 1 }}>
+              <Box
+                sx={{
+                  backgroundColor: "#755139",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  color: "white",
+                  fontWeight: 700,
+                  borderRadius: 2,
+                  p: 0.5,
+                  width: "58px",
+                }}
+              >
+                제외
               </Box>
+              <InputBase
+                type="search"
+                disabled={isLoading}
+                placeholder="except"
+                value={notWord}
+                onChange={(e) => setNotWord(e.target.value)}
+                onKeyPress={enterKeyEventOnSearch}
+                sx={{ flex: 1 }}
+              />
+              <Button
+                variant="contained"
+                disabled={isLoading}
+                sx={{
+                  bgcolor: "#755139",
+                  ":active": { bgcolor: "#755139" },
+                  ":hover": { bgcolor: "#755139" },
+                }}
+                onClick={() => setIsOtherSearch(!isOtherSearch)}
+              >
+                {isOtherSearch ? "리뷰 검색기" : "기타 리뷰 검색기"}
+              </Button>
             </Box>
           </Box>
         </Paper>
@@ -632,7 +659,7 @@ const SearchBox = () => {
             <Box ref={boxRef}
               sx={{
                 height: isOpenSearchTools
-                  ? "calc(100vh - 380px)"
+                  ? "calc(100vh - 424px)"
                   : "calc(100vh - 240px)",
                 transition: ".5s",
                 overflow: "auto",
