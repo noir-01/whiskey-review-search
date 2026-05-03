@@ -31,7 +31,7 @@ services:
     networks:
       - proxy-network
   
-  backend_test:
+  backend_dev:
     build:
       context: ./backend/review-api
     image: whiskey-backend:v5.1
