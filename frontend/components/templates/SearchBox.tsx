@@ -69,6 +69,25 @@ const SearchBox = () => {
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  
+  //스크롤 이슈 해결
+  useEffect(() => {
+    const setViewportHeight = () => {
+      document.documentElement.style.setProperty(
+        "--app-height",
+        `${window.innerHeight}px`
+      );
+    };
+
+    setViewportHeight();
+    window.addEventListener("resize", setViewportHeight);
+    window.addEventListener("orientationchange", setViewportHeight);
+
+    return () => {
+      window.removeEventListener("resize", setViewportHeight);
+      window.removeEventListener("orientationchange", setViewportHeight);
+    };
+  }, []);
 
   const BASE_URL = "https://gall.dcinside.com/mgallery/board/view/?id="
   const checkIsEmptyInput = () =>
@@ -294,22 +313,57 @@ const SearchBox = () => {
     <Box
       sx={{
         backgroundColor: "#F2EDD7",
-        height: isSearchButtonClicked ? "100dvh" : "auto",
+        position: isSearchButtonClicked
+          ? { xs: "fixed", md: "relative" }
+          : "relative",
+
+        top: isSearchButtonClicked ? 0 : "auto",
+        left: isSearchButtonClicked ? 0 : "auto",
+        right: isSearchButtonClicked ? 0 : "auto",
+        bottom: isSearchButtonClicked ? 0 : "auto",
+
+        height: isSearchButtonClicked
+          ? { xs: "var(--app-height)", md: "100dvh" }
+          : "auto",
+
+        width: isSearchButtonClicked
+          ? { xs: "100%", md: "auto" }
+          : "auto",
+
         overflow: isSearchButtonClicked ? "hidden" : "visible",
+
         display: "flex",
         flexDirection: "column",
+
+        // 검색 결과 화면에서는 내부 요소 가운데 정렬
+        // 메인 화면에서는 기존 흐름 유지
+        alignItems: isSearchButtonClicked ? "center" : "stretch",
+
+        minHeight: 0,
+        boxSizing: "border-box",
+
+        maxWidth: isSearchButtonClicked
+          ? { xs: "100%", md: "680px" }
+          : "680px",
+
+        // 여기 중요: 검색 전에는 기존처럼 세로 위치 확보
         mt: isLoading || isSearchButtonClicked
           ? 0
           : isOpenSearchTools
-            ? (isOtherSearch ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" } : "30vh")
+            ? isOtherSearch
+              ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" }
+              : "30vh"
             : "35vh",
+
         mb: isSearchButtonClicked
           ? 0
           : isOpenSearchTools
-            ? (isOtherSearch ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" } : "30vh")
+            ? isOtherSearch
+              ? { xs: "calc(30vh - 38px)", md: "calc(30vh - 20px)" }
+              : "30vh"
             : "50vh",
+
         transition: ".5s",
-        maxWidth: "680px",
       }}
     >
       <Typography
@@ -318,7 +372,14 @@ const SearchBox = () => {
           fontWeight: 700,
           my: 2,
           color: "#755139",
-          textAlign: isSearchButtonClicked || isLoading ? "left" : "center",
+           width: isSearchButtonClicked || isLoading
+          ? { xs: "90vw", sm: "95vw", md: "100%" }
+          : "auto",
+
+        maxWidth: "680px",
+        boxSizing: "border-box",
+
+        textAlign: isSearchButtonClicked || isLoading ? "left" : "center",
         }}
       >
         {isOtherSearch ? "기타 리뷰 검색하기" : "리뷰 검색하기"}
@@ -729,79 +790,98 @@ const SearchBox = () => {
         <>
           <Box
             sx={{
+              flex: 1,
+              minHeight: 0,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              mx: { xs: 0.5, sm: 2 },
+              flexDirection: "column",
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-              {`검색 결과 [총 ${totalElements}개]`}
-            </Typography>
-            <DropDownOption
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value as SortOptionType)}
-              optionList={[
-                { value: "최신순", content: "최신순" },
-                { value: "추천순", content: "추천순" },
-                { value: "댓글순", content: "댓글순" },
-              ]}
-            />
-          </Box>
-          <Box
-            sx={{
-              backgroundColor: "white",
-              borderRadius: 1.5,
-              width: { xs: "90vw", sm: "95vw", md: "46vw" },
-              maxWidth: "680px",
-              pb: 1,
-            }}
-          >
-            <Grid
-              container
-              id="list label"
+            <Box
               sx={{
+                flexShrink: 0,
                 display: "flex",
-                fontSize: "15px",
-                fontWeight: 700,
-                width: "100%",
-                textAlign: "center",
-                py: 1,
-                borderBottom: "1px solid lightgray",
+                alignItems: "center",
+                justifyContent: "space-between",
+                mx: { xs: 0.5, sm: 2 },
               }}
             >
-              <Grid item xs={8.5}>
-                제목
-              </Grid>
-              <Grid item xs={1}>
-                추천
-              </Grid>
-              <Grid item xs={2.5} sx={{ whiteSpace: "nowrap" }}>
-                작성일
-              </Grid>
-            </Grid>
-            <Box ref={boxRef}
-              sx={{
-                height: isOpenSearchTools
-                  ? isOtherSearch 
-                    ? { xs: "calc(100dvh - 500px)", md: "calc(100dvh - 464px)" } 
-                    : { xs: "calc(100dvh - 530px)", md: "calc(100dvh - 424px)" }
-                  : "calc(100dvh - 240px)",
-                transition: ".5s",
-                boxSizing: "border-box",
-                overflow: "auto",
-                p: "6px",
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                {`검색 결과 [총 ${totalElements}개]`}
+              </Typography>
+              <DropDownOption
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as SortOptionType)}
+                optionList={[
+                  { value: "최신순", content: "최신순" },
+                  { value: "추천순", content: "추천순" },
+                  { value: "댓글순", content: "댓글순" },
+                ]}
+              />
+            </Box>
 
-                "&::-webkit-scrollbar": {
-                  width: "6px",
-                  backgroundColor: "lightgray",
-                },
-                "&::-webkit-scrollbar-thumb": {
-                  backgroundColor: "gray",
-                  borderRadius: "20px",
-                },
+            <Box
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+                backgroundColor: "white",
+                borderRadius: 1.5,
+                width: { xs: "90vw", sm: "95vw", md: "46vw" },
+                maxWidth: "680px",
+                pb: 1,
               }}
             >
+              <Grid
+                container
+                id="list label"
+                sx={{
+                  flexShrink: 0,
+                  display: "flex",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  width: "100%",
+                  textAlign: "center",
+                  py: 1,
+                  borderBottom: "1px solid lightgray",
+                }}
+              >
+                <Grid item xs={8.5}>
+                  제목
+                </Grid>
+                <Grid item xs={1}>
+                  추천
+                </Grid>
+                <Grid item xs={2.5} sx={{ whiteSpace: "nowrap" }}>
+                  작성일
+                </Grid>
+              </Grid>
+
+              <Box
+                ref={boxRef}
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  height: {
+                    xs: "calc(var(--app-height) - 500px)",
+                    md: "calc(100dvh - 464px)",
+                  },
+                  transition: ".5s",
+                  boxSizing: "border-box",
+                  overflowY: "auto",
+                  overflowX: "hidden",
+                  p: "6px",
+
+                  "&::-webkit-scrollbar": {
+                    width: "6px",
+                    backgroundColor: "lightgray",
+                  },
+                  "&::-webkit-scrollbar-thumb": {
+                    backgroundColor: "gray",
+                    borderRadius: "20px",
+                  },
+                }}
+              >
               {data?.length !== 0 &&
                 data
                   .sort((a, b) => {
@@ -914,6 +994,7 @@ const SearchBox = () => {
                   </Box>
                 )
               }
+              </Box>
 
             {!isFetching && data.length === 0 && (<Box>검색결과가 없습니다.</Box>)}
             </Box>
