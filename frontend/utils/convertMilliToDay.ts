@@ -1,6 +1,6 @@
 const convertMilliToDay = (date: number) => {
   const dateData = new Date(date);
-  return `${dateData.getFullYear().toString().slice(-2)}-${(
+  return `${dateData.getFullYear()}-${(
     dateData.getMonth() + 1
   )
     .toString()

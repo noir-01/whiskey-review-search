@@ -15,7 +15,7 @@ export default function Home() {
   const [isSearchBox, setIsSearchBox] = useState(true);
 
   useEffect(() => {
-    window.onbeforeunload = async (event) => {
+    window.onbeforeunload = (event) => {
       event.preventDefault();
       return "";
     };
@@ -23,7 +23,9 @@ export default function Home() {
     return () => {
       window.onbeforeunload = null;
     };
+  }, []);
 
+  useEffect(() => {
     const handleRouteChange = (url: URL) => {
       gtag.pageview(url);
     };
@@ -32,7 +34,6 @@ export default function Home() {
     return () => {
       router.events.off("routeChangeComplete", handleRouteChange);
     };
-    
   }, [router]);
 
   return (
