@@ -79,7 +79,7 @@ const SearchTextfield = ({
       }
     }
     setSearchInput(searchInput.trim());
-    handleMoreActionOnSearch(searchInput);
+    handleMoreActionOnSearch(searchInput.trim());
   };
 
   const enterKeyEventOnSearch = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -132,7 +132,7 @@ const SearchTextfield = ({
           }}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          onKeyPress={enterKeyEventOnSearch}
+          onKeyDown={enterKeyEventOnSearch}
         />
         <IconButton
           type="button"
@@ -230,7 +230,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
           <InputBase
             type="search"
@@ -239,7 +239,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchOptionA2}
             onChange={(e) => setSearchOptionA2(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
           <InputBase
             type="search"
@@ -248,7 +248,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchOptionA3}
             onChange={(e) => setSearchOptionA3(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
         </Box>
         <Box sx={{ display: "flex", width: "100%", my: 1, gap: 0.5 }}>
@@ -275,7 +275,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchOptionO1}
             onChange={(e) => setSearchOptionO1(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
           <InputBase
             type="search"
@@ -284,7 +284,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchOptionO2}
             onChange={(e) => setSearchOptionO2(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
           <InputBase
             type="search"
@@ -293,7 +293,7 @@ const SearchTextfield = ({
             sx={{ flexBasis: "25%" }}
             value={searchOptionO3}
             onChange={(e) => setSearchOptionO3(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
           />
         </Box>
         <Box sx={{ display: "flex", width: "100%", my: 1, gap: 1 }}>
@@ -318,7 +318,7 @@ const SearchTextfield = ({
             placeholder="age"
             value={age}
             onChange={(e) => setAge(e.target.value)}
-            onKeyPress={enterKeyEventOnSearch}
+            onKeyDown={enterKeyEventOnSearch}
             sx={{ flex: 1 }}
           />
           <Box sx={{ display: "flex", gap: 1 }}>
