@@ -1,1 +1,1 @@
-copilot review must be done in korean
+Copilot reviews must be done in Korean.
