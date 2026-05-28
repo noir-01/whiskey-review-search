@@ -135,3 +135,6 @@ services:
 networks:
   proxy-network:
     external: true
+
+volumes:
+  whiskey_frontend_node_modules:

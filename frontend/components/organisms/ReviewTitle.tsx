@@ -7,16 +7,15 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useWhiskeyStore } from "@/store/MemoWhiskey";
 import snackbar from "@/utils/snackbar";
+import apiFetch, { getApiErrorMessage } from "@/utils/apiFetch";
 
 const ReviewTitle = () => {
   const { whiskey, updateWhiskey } = useWhiskeyStore();
 
-  const getNameList = async (input: string): Promise<{ result: string[] }> => {
-    const value = await fetch(
-      `https://whiskeygallery-review.com:444/autocomplete?word=${input}`
+  const getNameList = async (input: string): Promise<{ result: string[] }> =>
+    apiFetch<{ result: string[] }>(
+      `https://whiskeygallery-review.com:444/autocomplete?word=${encodeURIComponent(input)}`
     );
-    return value.json();
-  };
 
   const { data: nameList } = useQuery(
     ["review", whiskey.name],
@@ -25,8 +24,7 @@ const ReviewTitle = () => {
       keepPreviousData: true,
       refetchOnWindowFocus: false,
       staleTime: 1000 * 60 * 60,
-      onError: (err) =>
-        snackbar(`에러가 발생했습니다. 다시 시도해주세요. (error:${err})`),
+      onError: (err) => snackbar(getApiErrorMessage(err)),
     }
   );
 

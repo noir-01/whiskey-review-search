@@ -20,6 +20,7 @@ import DropDownOption from "@/components/atoms/DropDownOption";
 import type { SearchType, SortOptionType,Page } from "@/types/search";
 import convertMilliToDay from "@/utils/convertMilliToDay";
 import snackbar from "@/utils/snackbar";
+import apiFetch, { getApiErrorMessage } from "@/utils/apiFetch";
 
 import ArrowDropUpIcon from "@mui/icons-material/ArrowDropUp";
 import SearchIcon from "@mui/icons-material/Search";
@@ -170,7 +171,7 @@ const SearchBox = () => {
       ? Array.from(selectedGallIds).map(id => `gallIds=${encodeURIComponent(id)}`).join('&')
       : '';
 
-    const value = await fetch(
+    return apiFetch<Page<SearchType>>(
       `/api/review/${
         isOtherSearch ? "other?" : "whiskey?"
       }${searchInput.trim() ? `andWords=${encodeURIComponent(searchInput.trim())}&` : ""}`
@@ -185,29 +186,32 @@ const SearchBox = () => {
       + (gallIdsQuery ? gallIdsQuery + '&' : '')
       + `page=${page}&size=20&sortField=postDate&direction=DESC`
     );
-    return value.json();
   };
   const queryClient = useQueryClient();
 
   //로딩 적용하지 않기 위해 별도 함수 작성
   const searchWithPage = async (page: number) => {
-    const result = await queryClient.fetchQuery(
-      ["search",page],
-      () => getData(page)
-    );
-    // 수동으로 onSuccess 로직 처리
-    setHasMoreData(result.page.totalPages != result.page.number+1);
-    setTotalElements(result.page.totalElements);
-    setIsSearchButtonClicked(true);
-    if (result.content){
-      if (page === 0) {
-        setData(result.content);
+    try {
+      const result = await queryClient.fetchQuery(
+        ["search",page],
+        () => getData(page)
+      );
+      // 수동으로 onSuccess 로직 처리
+      setHasMoreData(result.page.totalPages != result.page.number+1);
+      setTotalElements(result.page.totalElements);
+      setIsSearchButtonClicked(true);
+      if (result.content){
+        if (page === 0) {
+          setData(result.content);
+        }
+        else{
+          setData((prevData) => [...prevData, ...result.content]); // 기존 데이터에 이어붙이기
+        }
+      }else{
+        setData([]);
       }
-      else{
-        setData((prevData) => [...prevData, ...result.content]); // 기존 데이터에 이어붙이기
-      }
-    }else{
-      setData([]);
+    } catch (err) {
+      snackbar(getApiErrorMessage(err));
     }
   };
 
@@ -234,8 +238,7 @@ const SearchBox = () => {
           setData([]);
         }
       },
-      onError: (err) =>
-        snackbar(`에러가 발생했습니다. 다시 시도해주세요. (error:${err})`),
+      onError: (err) => snackbar(getApiErrorMessage(err)),
       //onSettled: ()=>{console.log("refetch!")} //테스트용
     }
   );
