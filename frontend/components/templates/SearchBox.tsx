@@ -799,6 +799,7 @@ const SearchBox = () => {
               flexDirection: "column",
               width: { xs: "90vw", sm: "95vw", md: "100%" },
               maxWidth: "680px",
+              mb: { xs: 1.5, md: 0 },
             }}
           >
             <Box
@@ -875,9 +876,9 @@ const SearchBox = () => {
                   maxHeight: {
                     xs: isOpenSearchTools
                       ? isOtherSearch
-                        ? "max(160px, calc(var(--app-height) - 500px))"
-                        : "max(180px, calc(var(--app-height) - 420px))"
-                      : "max(220px, calc(var(--app-height) - 260px))",
+                        ? "max(160px, calc(var(--app-height) - 512px))"
+                        : "max(180px, calc(var(--app-height) - 432px))"
+                      : "max(220px, calc(var(--app-height) - 272px))",
                     md: "calc(100dvh - 464px)",
                   },
                   transition: ".5s",
