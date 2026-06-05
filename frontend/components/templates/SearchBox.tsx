@@ -793,10 +793,12 @@ const SearchBox = () => {
         <>
           <Box
             sx={{
-              flex: 1,
+              flex: { xs: "0 1 auto", md: 1 },
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
+              width: { xs: "90vw", sm: "95vw", md: "100%" },
+              maxWidth: "680px",
             }}
           >
             <Box
@@ -824,14 +826,15 @@ const SearchBox = () => {
 
             <Box
               sx={{
-                flex: 1,
+                flex: { xs: "0 1 auto", md: 1 },
                 minHeight: 0,
                 display: "flex",
                 flexDirection: "column",
                 backgroundColor: "white",
                 borderRadius: 1.5,
-                width: { xs: "90vw", sm: "95vw", md: "46vw" },
+                width: "100%",
                 maxWidth: "680px",
+                overflow: "hidden",
                 pb: 1,
               }}
             >
@@ -863,10 +866,18 @@ const SearchBox = () => {
               <Box
                 ref={boxRef}
                 sx={{
-                  flex: 1,
+                  flex: { xs: "0 1 auto", md: 1 },
                   minHeight: 0,
                   height: {
-                    xs: "calc(var(--app-height) - 500px)",
+                    xs: "auto",
+                    md: "calc(100dvh - 464px)",
+                  },
+                  maxHeight: {
+                    xs: isOpenSearchTools
+                      ? isOtherSearch
+                        ? "max(160px, calc(var(--app-height) - 500px))"
+                        : "max(180px, calc(var(--app-height) - 420px))"
+                      : "max(220px, calc(var(--app-height) - 260px))",
                     md: "calc(100dvh - 464px)",
                   },
                   transition: ".5s",
