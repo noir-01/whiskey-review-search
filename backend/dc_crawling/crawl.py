@@ -4,18 +4,31 @@ from urllib import request
 from bs4 import BeautifulSoup
 from datetime import datetime,timedelta
 import time
+import random
 import pymysql
 import re
 import os
 import sys
 
 import logging
-import sys
+from logging.handlers import RotatingFileHandler
+
+LOG_DIR = os.getenv('CRAWL_LOG_DIR', os.path.join(os.path.dirname(__file__), 'logs'))
+os.makedirs(LOG_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOG_DIR, 'crawler.log')
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s:%(message)s',
-    stream=sys.stdout
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        RotatingFileHandler(
+            LOG_FILE,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
+            encoding='utf-8',
+        ),
+    ],
 )
 
 #email
@@ -32,6 +45,73 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from gallery_master import GALLERY_MASTER
 from duplicate_monitor import extract_detail, similarity, same_images
+
+
+class CrawlBlockedError(RuntimeError):
+    """Raised when DCInside appears to be rate-limiting or blocking this client."""
+
+
+LIST_DELAY_MIN = float(os.getenv('CRAWL_LIST_DELAY_MIN', '1'))
+LIST_DELAY_MAX = float(os.getenv('CRAWL_LIST_DELAY_MAX', '2'))
+DETAIL_DELAY_MIN = float(os.getenv('CRAWL_DETAIL_DELAY_MIN', '0.8'))
+DETAIL_DELAY_MAX = float(os.getenv('CRAWL_DETAIL_DELAY_MAX', '1.5'))
+JOB_DELAY_MIN = float(os.getenv('CRAWL_JOB_DELAY_MIN', '3'))
+JOB_DELAY_MAX = float(os.getenv('CRAWL_JOB_DELAY_MAX', '7'))
+MAX_DETAIL_REQUESTS = int(os.getenv('CRAWL_MAX_DETAIL_REQUESTS', '2000'))
+DETAIL_LOOKBACK_DAYS = int(os.getenv('CRAWL_DETAIL_LOOKBACK_DAYS', '30'))
+
+
+def getDetailSinceDate(now=None):
+    configured = os.getenv('CRAWL_DETAIL_SINCE', '').strip()
+    if configured:
+        return datetime.strptime(configured, '%Y-%m-%d').date()
+    current = (now or datetime.now()).date()
+    return current - timedelta(days=DETAIL_LOOKBACK_DAYS)
+
+
+DETAIL_SINCE_DATE = getDetailSinceDate()
+
+
+def parsePostDate(value):
+    date_format = '%y/%m/%d' if '/' in value else '%Y-%m-%d'
+    return datetime.strptime(value, date_format).date()
+
+
+def fetchPage(session, url, request_kind):
+    if request_kind == 'list':
+        delay_min, delay_max = LIST_DELAY_MIN, LIST_DELAY_MAX
+    else:
+        delay_min, delay_max = DETAIL_DELAY_MIN, DETAIL_DELAY_MAX
+
+    for attempt in range(3):
+        time.sleep(random.uniform(delay_min, delay_max))
+        try:
+            response = session.get(url, timeout=20)
+        except requests.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep((2 ** attempt) * 5 + random.uniform(0, 2))
+            continue
+
+        if response.status_code in (403, 429):
+            raise CrawlBlockedError(
+                f"DCInside blocked the {request_kind} request: HTTP {response.status_code} ({url})"
+            )
+        if response.status_code >= 500:
+            if attempt == 2:
+                response.raise_for_status()
+            time.sleep((2 ** attempt) * 5 + random.uniform(0, 2))
+            continue
+
+        response.raise_for_status()
+        if not response.content.strip():
+            raise CrawlBlockedError(
+                f"DCInside returned an empty body for the {request_kind} request ({url})"
+            )
+        logging.info("%s request succeeded: HTTP %s %s", request_kind, response.status_code, url)
+        return response
+
+    raise RuntimeError(f"Request retries exhausted: {url}")
 
 def getTotalPage(url):
     options = Options()
@@ -216,16 +296,20 @@ def sourceAlreadyCollected(gallery_id, post_id):
             return cursor.fetchone() is not None
 
 
-def collectAndCompareSource(job, post_id, title, nickname, post_date, headers):
+def collectAndCompareSource(job, post_id, title, nickname, post_date, session, report):
     if sourceAlreadyCollected(job['gall_id'], post_id):
         return None
 
+    if report['detail_requests'] >= MAX_DETAIL_REQUESTS:
+        report['detail_limit_reached'] = True
+        return None
+
     url = f"https://gall.dcinside.com/mgallery/board/view/?id={job['gall_id']}&no={post_id}"
-    response = requests.get(url, headers=headers, timeout=20)
-    response.raise_for_status()
+    report['detail_requests'] += 1
+    response = fetchPage(session, url, 'detail')
     detail = extract_detail(response.text)
     if not detail['body_text']:
-        logging.warning("본문을 찾지 못함: %s", url)
+        raise CrawlBlockedError(f"DCInside detail body was not found ({url})")
 
     with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
@@ -246,8 +330,9 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, headers):
                 author_basis = 'gallog_id'
                 cursor.execute(
                     """SELECT * FROM crawl_review_source
-                       WHERE author_id=%s AND gallery_id<>%s AND id<>%s""",
-                    (detail['author_id'], job['gall_id'], source_id),
+                       WHERE author_id=%s AND gallery_id<>%s AND id<>%s
+                         AND post_date >= %s""",
+                    (detail['author_id'], job['gall_id'], source_id, DETAIL_SINCE_DATE),
                 )
                 candidates = cursor.fetchall()
             else:
@@ -255,8 +340,9 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, headers):
                 cursor.execute(
                     """SELECT * FROM crawl_review_source
                        WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
+                         AND post_date >= %s
                          AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
-                    (job['gall_id'], source_id, detail['nickname'] or nickname,
+                    (job['gall_id'], source_id, DETAIL_SINCE_DATE, detail['nickname'] or nickname,
                      detail['ip_prefix'], detail['body_hash']),
                 )
                 candidates = cursor.fetchall()
@@ -300,7 +386,11 @@ def crawlByPage(job, dataList, report, findLastPage=False):
     
     
     # 헤더 설정
-    headers = {'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36'},
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    })
     
     #유동닉 정규식 ex) ㅇㅇ(223.38)
     fluidNick = re.compile(r'.+\(\d{1,3}[.]\d{1,3}\)')
@@ -319,10 +409,9 @@ def crawlByPage(job, dataList, report, findLastPage=False):
             max_pages = 3
 
     while page <= max_pages:
-        time.sleep(0.03)   #부하 막기 위해 time.sleep() 삽입. 30ms
         # html
         URL = BASE_URL + f"&page={page}"
-        response = requests.get(URL, headers=headers[0])
+        response = fetchPage(session, URL, 'list')
         soup = BeautifulSoup(response.content, 'html.parser')
         try:
             html_list = soup.find('tbody').find_all('tr')
@@ -380,10 +469,7 @@ def crawlByPage(job, dataList, report, findLastPage=False):
 
             except:
                 reply = 0
-            if '/' in postDate:
-                postDate_datetime = datetime.strptime(postDate,'%y/%m/%d')
-            else:
-                postDate_datetime = datetime.strptime(postDate,'%Y-%m-%d')
+            postDate_datetime = parsePostDate(postDate)
             
             if category!="whiskey":
                 #위갤의 증류소투어, 기타리뷰도 whiskey로 접근해야 하지만 DB 레벨에는 의미 구분을 위해서
@@ -393,17 +479,19 @@ def crawlByPage(job, dataList, report, findLastPage=False):
             else:
                 dataList.append([id,title,nickname,recom,reply,postDate])
 
-            try:
-                observed = collectAndCompareSource(
-                    job, id, title.strip(), nickname, postDate, headers[0]
-                )
-                if observed is not None:
-                    report['new_sources'] += 1
-                    report['candidates'].extend(observed)
-                time.sleep(0.1)
-            except Exception as e:
-                report['detail_errors'].append(f"{liquor}/{id}: {e}")
-                logging.exception("상세 글 수집 실패: %s/%s", liquor, id)
+            if postDate_datetime >= DETAIL_SINCE_DATE and not report['detail_limit_reached']:
+                try:
+                    observed = collectAndCompareSource(
+                        job, id, title.strip(), nickname, postDate, session, report
+                    )
+                    if observed is not None:
+                        report['new_sources'] += 1
+                        report['candidates'].extend(observed)
+                except CrawlBlockedError:
+                    raise
+                except Exception as e:
+                    report['detail_errors'].append(f"{liquor}/{id}: {e}")
+                    logging.exception("상세 글 수집 실패: %s/%s", liquor, id)
             
             if len(dataList)>=batch_size:
                 print(id)
@@ -448,7 +536,18 @@ def sqlUpload(dataList,category):
 
 if __name__ == '__main__':
     ensureMonitorTables()
-    report = {'new_sources': 0, 'candidates': [], 'detail_errors': []}
+    report = {
+        'new_sources': 0,
+        'candidates': [],
+        'detail_errors': [],
+        'detail_requests': 0,
+        'detail_limit_reached': False,
+    }
+    logging.info(
+        "상세 수집 기준일=%s, 실행당 최대 상세 요청=%s",
+        DETAIL_SINCE_DATE,
+        MAX_DETAIL_REQUESTS,
+    )
 
     MAX_RETRIES = 3
     RETRY_DELAY = 300 #재시도=5분
@@ -459,8 +558,14 @@ if __name__ == '__main__':
         for job in pending:
             try:
                 dataList = []
-                print(f"\nUPLOAD SQL (job = {job['tab_key']})")
+                logging.info("크롤링 작업 시작: %s", job['tab_key'])
                 crawlByPage(job, dataList, report)
+                time.sleep(random.uniform(JOB_DELAY_MIN, JOB_DELAY_MAX))
+            except CrawlBlockedError as e:
+                message = f"차단 신호를 감지해 전체 크롤링을 즉시 중단합니다: {e}"
+                logging.critical(message)
+                sendErrorEmail(message)
+                sys.exit(2)
             except Exception as e:
                 logging.error(f"[시도 {attempt}] {job['tab_key']} 실패: {e}")
                 failed.append((job, str(e)))
@@ -470,6 +575,8 @@ if __name__ == '__main__':
                 f"신규 원문: {report['new_sources']}개",
                 f"중복 후보: {len(report['candidates'])}개",
                 f"상세 수집 오류: {len(report['detail_errors'])}개",
+                f"상세 요청: {report['detail_requests']}개",
+                f"상세 요청 상한 도달: {report['detail_limit_reached']}",
                 "",
             ]
             for candidate in report['candidates']:
