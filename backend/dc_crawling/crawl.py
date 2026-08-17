@@ -30,6 +30,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
+from gallery_master import GALLERY_MASTER
+from duplicate_monitor import extract_detail, similarity, same_images
+
 def getTotalPage(url):
     options = Options()
     options.add_argument("--headless")
@@ -64,27 +67,13 @@ def getTotalPage(url):
     except:
         pass
 #liquor: 실제 갤러리 ID
-def validateSearchHead(liquor, category):
+def validateSearchHead(liquor, tab_label):
     """
     Validates if the search_head value exists and contains the expected subject string
     Returns the valid search_head or raises RuntimeError if validation fails
     """
 
-    subject_str_dict = {
-        "other": "기타리뷰"
-        , "whiskey": "리뷰"
-        , "beer": "리뷰"
-        , "brandy": "리뷰"
-        , "cock_tail": "리뷰"
-        , "rum": "리뷰"
-        , "nuncestbibendum": "술리뷰🍸"
-        , "oaksusu": "리뷰🌽"
-        , "distillery-tour": "증류소투어"
-    }
-
-    expected_text = subject_str_dict.get(category)
-    if not expected_text:
-        raise RuntimeError(f"Invalid category: {category}")
+    expected_text = tab_label
 
     # Fetch the navigation menu
     try:
@@ -140,17 +129,181 @@ def sendErrorEmail(error_message):
         print(f"Failed to send email: {str(e)}")
 
 
+def sendReportEmail(subject, report):
+    sender = os.getenv('GMAIL_EMAIL')
+    if not sender or not os.getenv('GMAIL_PW'):
+        logging.info("메일 설정이 없어 보고서를 로그로만 출력합니다.\n%s", report)
+        return
+    msg = MIMEText(report, _charset='utf-8')
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = sender
+    try:
+        with smtplib.SMTP('smtp.gmail.com', 587) as smtp_server:
+            smtp_server.starttls()
+            smtp_server.login(sender, os.getenv('GMAIL_PW'))
+            smtp_server.send_message(msg)
+    except Exception as e:
+        logging.error("일일 보고 메일 전송 실패: %s", e)
 
-def crawlByPage(liquor,category,dataList,findLastPage=False):
 
-    search_head = validateSearchHead(liquor, category)
+def getConnection(dict_cursor=False):
+    return pymysql.connect(
+        host=os.getenv('DB_HOST'),
+        port=int(os.getenv('DB_PORT', '3306')),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        db=os.getenv('DB_NAME'),
+        charset='utf8mb4',
+        use_unicode=True,
+        cursorclass=pymysql.cursors.DictCursor if dict_cursor else pymysql.cursors.Cursor,
+    )
+
+
+def ensureMonitorTables():
+    statements = (
+        """CREATE TABLE IF NOT EXISTS crawl_review_source (
+            id BIGINT NOT NULL AUTO_INCREMENT,
+            gallery_id VARCHAR(64) NOT NULL,
+            post_id INT NOT NULL,
+            tab_key VARCHAR(64) NOT NULL,
+            db_category VARCHAR(64) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            nickname VARCHAR(255),
+            author_id VARCHAR(255),
+            ip_prefix VARCHAR(64),
+            body_text LONGTEXT,
+            body_hash CHAR(64),
+            image_urls TEXT,
+            post_date DATE,
+            crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_crawl_source (gallery_id, post_id),
+            KEY idx_crawl_author (author_id),
+            KEY idx_crawl_body_hash (body_hash),
+            KEY idx_crawl_anon (nickname, ip_prefix)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
+        """CREATE TABLE IF NOT EXISTS crawl_duplicate_candidate (
+            id BIGINT NOT NULL AUTO_INCREMENT,
+            source_id BIGINT NOT NULL,
+            candidate_source_id BIGINT NOT NULL,
+            author_basis VARCHAR(32) NOT NULL,
+            similarity_score DECIMAL(5,2) NOT NULL,
+            ratio_score DECIMAL(5,2) NOT NULL,
+            partial_score DECIMAL(5,2) NOT NULL,
+            length_ratio DECIMAL(6,5) NOT NULL,
+            same_images BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR(32) NOT NULL DEFAULT 'observed',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_candidate_pair (source_id, candidate_source_id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
+    )
+    with getConnection() as conn:
+        with conn.cursor() as cursor:
+            for statement in statements:
+                cursor.execute(statement)
+        conn.commit()
+
+
+def sourceAlreadyCollected(gallery_id, post_id):
+    with getConnection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
+                (gallery_id, post_id),
+            )
+            return cursor.fetchone() is not None
+
+
+def collectAndCompareSource(job, post_id, title, nickname, post_date, headers):
+    if sourceAlreadyCollected(job['gall_id'], post_id):
+        return None
+
+    url = f"https://gall.dcinside.com/mgallery/board/view/?id={job['gall_id']}&no={post_id}"
+    response = requests.get(url, headers=headers, timeout=20)
+    response.raise_for_status()
+    detail = extract_detail(response.text)
+    if not detail['body_text']:
+        logging.warning("본문을 찾지 못함: %s", url)
+
+    with getConnection(dict_cursor=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO crawl_review_source
+                   (gallery_id,post_id,tab_key,db_category,title,nickname,author_id,
+                    ip_prefix,body_text,body_hash,image_urls,post_date)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (job['gall_id'], post_id, job['tab_key'], job['db_category'], title,
+                 detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
+                 detail['body_text'], detail['body_hash'], detail['image_urls'], post_date),
+            )
+            source_id = cursor.lastrowid
+
+            if not detail['body_text']:
+                candidates = []
+            elif detail['author_id']:
+                author_basis = 'gallog_id'
+                cursor.execute(
+                    """SELECT * FROM crawl_review_source
+                       WHERE author_id=%s AND gallery_id<>%s AND id<>%s""",
+                    (detail['author_id'], job['gall_id'], source_id),
+                )
+                candidates = cursor.fetchall()
+            else:
+                author_basis = 'anonymous_hint'
+                cursor.execute(
+                    """SELECT * FROM crawl_review_source
+                       WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
+                         AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
+                    (job['gall_id'], source_id, detail['nickname'] or nickname,
+                     detail['ip_prefix'], detail['body_hash']),
+                )
+                candidates = cursor.fetchall()
+
+            observed = []
+            for candidate in candidates:
+                scores = similarity(detail['body_text'], candidate['body_text'])
+                images_equal = same_images(detail['image_urls'], candidate['image_urls'])
+                # This is intentionally broad: observation data, not an automatic merge.
+                if scores['score'] < 70 and not images_equal:
+                    continue
+                left_id, right_id = sorted((source_id, candidate['id']))
+                cursor.execute(
+                    """INSERT IGNORE INTO crawl_duplicate_candidate
+                       (source_id,candidate_source_id,author_basis,similarity_score,
+                        ratio_score,partial_score,length_ratio,same_images)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (left_id, right_id, author_basis, scores['score'], scores['ratio'],
+                     scores['partial_ratio'], scores['length_ratio'], images_equal),
+                )
+                if cursor.rowcount:
+                    observed.append({
+                        'score': scores['score'],
+                        'author_basis': author_basis,
+                        'new_title': title,
+                        'new_url': url,
+                        'old_title': candidate['title'],
+                        'old_url': f"https://gall.dcinside.com/mgallery/board/view/?id={candidate['gallery_id']}&no={candidate['post_id']}",
+                    })
+        conn.commit()
+    return observed
+
+
+
+def crawlByPage(job, dataList, report, findLastPage=False):
+
+    liquor = job['gall_id']
+    category = job['db_category']
+
+    search_head = validateSearchHead(liquor, job['tab_label'])
     
     
     # 헤더 설정
     headers = {'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36'},
     
     #유동닉 정규식 ex) ㅇㅇ(223.38)
-    fluidNick = re.compile('.+\(\d{1,3}[.]\d{1,3}\)')
+    fluidNick = re.compile(r'.+\(\d{1,3}[.]\d{1,3}\)')
 
     batch_size = 1024
     BASE_URL = f"https://gall.dcinside.com/mgallery/board/lists/?id={liquor}&sort_type=N&search_head={search_head}"
@@ -239,6 +392,18 @@ def crawlByPage(liquor,category,dataList,findLastPage=False):
                 dataList.append([category,id,title.strip(),nickname,recom,reply,postDate])
             else:
                 dataList.append([id,title,nickname,recom,reply,postDate])
+
+            try:
+                observed = collectAndCompareSource(
+                    job, id, title.strip(), nickname, postDate, headers[0]
+                )
+                if observed is not None:
+                    report['new_sources'] += 1
+                    report['candidates'].extend(observed)
+                time.sleep(0.1)
+            except Exception as e:
+                report['detail_errors'].append(f"{liquor}/{id}: {e}")
+                logging.exception("상세 글 수집 실패: %s/%s", liquor, id)
             
             if len(dataList)>=batch_size:
                 print(id)
@@ -252,14 +417,9 @@ def crawlByPage(liquor,category,dataList,findLastPage=False):
     sqlUpload(dataList,category)
 
 def sqlUpload(dataList,category):
-    conn = pymysql.connect(
-        host=os.getenv('DB_HOST'),
-        user=os.getenv('DB_USER'),
-        password=os.getenv('DB_PASSWORD'),
-        db=os.getenv('DB_NAME'),
-        charset='utf8mb4',
-        use_unicode=True
-    )
+    if not dataList:
+        return
+    conn = getConnection()
     print("CONNECTION SET")
 
     cursor = conn.cursor()
@@ -287,34 +447,49 @@ def sqlUpload(dataList,category):
 
 
 if __name__ == '__main__':
-    categoryList = ["whiskey","other", "brandy", "beer", "cock_tail", "rum", "nuncestbibendum","distillery-tour"]
-    #categoryList = ["whiskey"]
+    ensureMonitorTables()
+    report = {'new_sources': 0, 'candidates': [], 'detail_errors': []}
 
     MAX_RETRIES = 3
     RETRY_DELAY = 300 #재시도=5분
 
-    pending = list(categoryList)
+    pending = list(GALLERY_MASTER)
     for attempt in range(1, MAX_RETRIES + 1):
         failed = []
-        for category in pending:
+        for job in pending:
             try:
                 dataList = []
-                print(f"\nUPLOAD SQL (category = {category})")
-                if category in ("whiskey", "other", "distillery-tour"):
-                    crawlByPage("whiskey", category, dataList)
-                    #crawlByPage("whiskey", category, dataList, True)
-                else:
-                    crawlByPage(category, category, dataList)
-                    #crawlByPage(category, category, dataList, True)
+                print(f"\nUPLOAD SQL (job = {job['tab_key']})")
+                crawlByPage(job, dataList, report)
             except Exception as e:
-                logging.error(f"[시도 {attempt}] {category} 실패: {e}")
-                failed.append((category, str(e)))
+                logging.error(f"[시도 {attempt}] {job['tab_key']} 실패: {e}")
+                failed.append((job, str(e)))
 
         if not failed:
+            lines = [
+                f"신규 원문: {report['new_sources']}개",
+                f"중복 후보: {len(report['candidates'])}개",
+                f"상세 수집 오류: {len(report['detail_errors'])}개",
+                "",
+            ]
+            for candidate in report['candidates']:
+                lines.extend([
+                    f"[{candidate['score']:.1f}] {candidate['author_basis']}",
+                    f"- {candidate['new_title']}\n  {candidate['new_url']}",
+                    f"- {candidate['old_title']}\n  {candidate['old_url']}",
+                    "",
+                ])
+            if report['detail_errors']:
+                lines.append("상세 수집 오류")
+                lines.extend(f"- {error}" for error in report['detail_errors'])
+            sendReportEmail(
+                f"[크롤링 관찰 보고] {datetime.now().strftime('%Y-%m-%d')}",
+                "\n".join(lines),
+            )
             sys.exit(0)
 
-        failed_names = [c for c, _ in failed]
-        failed_detail = "\n".join(f"  - {c}: {e}" for c, e in failed)
+        failed_names = [job['tab_key'] for job, _ in failed]
+        failed_detail = "\n".join(f"  - {job['tab_key']}: {e}" for job, e in failed)
         if attempt < MAX_RETRIES:
             sendErrorEmail(
                 f"[시도 {attempt}/{MAX_RETRIES}] 실패 카테고리: {failed_names}\n\n{failed_detail}\n\n"
@@ -322,7 +497,7 @@ if __name__ == '__main__':
             )
             logging.warning(f"[시도 {attempt}] 실패: {failed_names}, {RETRY_DELAY}초 후 재시도")
             time.sleep(RETRY_DELAY)
-            pending = failed_names
+            pending = [job for job, _ in failed]
         else:
             sendErrorEmail(
                 f"[최종 실패] {MAX_RETRIES}회 시도 후 포기\n\n실패 카테고리: {failed_names}\n\n{failed_detail}"

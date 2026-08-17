@@ -19,3 +19,4 @@ urllib3==2.0.4
 cryptography
 selenium==4.31.0
 python-dotenv
+rapidfuzz==3.9.7
