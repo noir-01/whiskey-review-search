@@ -24,6 +24,10 @@ services:
     image: whiskey-backend:v5.1
     restart: always
     container_name: whiskey-backend-lts
+    environment:
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
     expose:
       - "8080"
     depends_on:
@@ -36,6 +40,10 @@ services:
       context: ./backend/review-api
     image: whiskey-backend:v5.1
     container_name: whiskey-backend-test
+    environment:
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
     ports:
       - "8081:8080"
     depends_on:
@@ -84,6 +92,7 @@ services:
       - whiskey_frontend_node_modules:/app/node_modules
     environment:
       - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8081}
       - DISABLE_PWA=true
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
@@ -109,10 +118,8 @@ services:
     build:
       context: ./backend/dc_crawling
       dockerfile: Dockerfile
-    image: python-app:v1.0
+    image: noir2001/whiskey-monitor:v2
     container_name: python-app
-    volumes:
-      - ./backend/dc_crawling:/app
     working_dir: /app
     environment:
       - TZ=Asia/Seoul
@@ -126,6 +133,18 @@ services:
       - DISPLAY=:99
       - GMAIL_EMAIL=${GMAIL_EMAIL}
       - GMAIL_PW=${GMAIL_PW}
+      - CRAWL_DETAIL_SINCE=${CRAWL_DETAIL_SINCE:-}
+      - CRAWL_DETAIL_LOOKBACK_DAYS=${CRAWL_DETAIL_LOOKBACK_DAYS:-30}
+      - CRAWL_MAX_DETAIL_REQUESTS=${CRAWL_MAX_DETAIL_REQUESTS:-200}
+      - CRAWL_TITLE_SIMILARITY_THRESHOLD=${CRAWL_TITLE_SIMILARITY_THRESHOLD:-45}
+      - CRAWL_MAX_TITLE_CANDIDATES=${CRAWL_MAX_TITLE_CANDIDATES:-5}
+      - CRAWL_LIST_DELAY_MIN=${CRAWL_LIST_DELAY_MIN:-1}
+      - CRAWL_LIST_DELAY_MAX=${CRAWL_LIST_DELAY_MAX:-2}
+      - CRAWL_DETAIL_DELAY_MIN=${CRAWL_DETAIL_DELAY_MIN:-0.8}
+      - CRAWL_DETAIL_DELAY_MAX=${CRAWL_DETAIL_DELAY_MAX:-1.5}
+      - CRAWL_JOB_DELAY_MIN=${CRAWL_JOB_DELAY_MIN:-3}
+      - CRAWL_JOB_DELAY_MAX=${CRAWL_JOB_DELAY_MAX:-7}
+      - CRAWL_LOG_DIR=${CRAWL_LOG_DIR:-/app/logs}
     depends_on:
       - mariadb
       - selenium-chrome

@@ -8,3 +8,4 @@ RUN apt-get update && \
 
 # Mroonga 활성화
 COPY init-mroonga.sql /docker-entrypoint-initdb.d/
+COPY migrations/*.sql /docker-entrypoint-initdb.d/

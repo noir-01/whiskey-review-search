@@ -44,7 +44,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from gallery_master import GALLERY_MASTER
-from duplicate_monitor import extract_detail, similarity, same_images
+from duplicate_monitor import extract_detail, similarity, same_images, title_similarity
 
 
 class CrawlBlockedError(RuntimeError):
@@ -59,6 +59,8 @@ JOB_DELAY_MIN = float(os.getenv('CRAWL_JOB_DELAY_MIN', '3'))
 JOB_DELAY_MAX = float(os.getenv('CRAWL_JOB_DELAY_MAX', '7'))
 MAX_DETAIL_REQUESTS = int(os.getenv('CRAWL_MAX_DETAIL_REQUESTS', '2000'))
 DETAIL_LOOKBACK_DAYS = int(os.getenv('CRAWL_DETAIL_LOOKBACK_DAYS', '30'))
+TITLE_SIMILARITY_THRESHOLD = float(os.getenv('CRAWL_TITLE_SIMILARITY_THRESHOLD', '45'))
+MAX_TITLE_CANDIDATES = int(os.getenv('CRAWL_MAX_TITLE_CANDIDATES', '5'))
 
 
 def getDetailSinceDate(now=None):
@@ -279,25 +281,83 @@ def ensureMonitorTables():
             UNIQUE KEY uq_candidate_pair (source_id, candidate_source_id)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
     )
-    with getConnection() as conn:
+    with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
             for statement in statements:
                 cursor.execute(statement)
         conn.commit()
 
 
-def sourceAlreadyCollected(gallery_id, post_id):
+def findTitleCandidates(job, post_id, title, nickname, post_date):
+    """Persist list metadata and shortlist without requesting a detail page."""
+    with getConnection(dict_cursor=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO crawl_review_source
+                   (gallery_id,post_id,tab_key,db_category,title,nickname,post_date)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                   ON DUPLICATE KEY UPDATE title=VALUES(title), nickname=VALUES(nickname),
+                                           post_date=VALUES(post_date)""",
+                (job['gall_id'], post_id, job['tab_key'], job['db_category'],
+                 title, nickname, post_date),
+            )
+            cursor.execute(
+                """SELECT id,gallery_id,post_id,title,nickname,body_text
+                   FROM crawl_review_source
+                   WHERE nickname=%s AND gallery_id<>%s AND post_date >= %s""",
+                (nickname, job['gall_id'], DETAIL_SINCE_DATE),
+            )
+            rows = cursor.fetchall()
+        conn.commit()
+    matches = [
+        row for row in rows
+        if title_similarity(title, row['title']) >= TITLE_SIMILARITY_THRESHOLD
+    ]
+    return matches[:MAX_TITLE_CANDIDATES]
+
+
+def hydrateTitleCandidates(title_candidates, session, report):
+    """Fetch an older candidate only after its writer/title passed the list-page filter."""
+    for candidate in title_candidates:
+        if candidate['body_text']:
+            continue
+        if report['detail_requests'] >= MAX_DETAIL_REQUESTS:
+            report['detail_limit_reached'] = True
+            return
+        url = ("https://gall.dcinside.com/mgallery/board/view/"
+               f"?id={candidate['gallery_id']}&no={candidate['post_id']}")
+        report['detail_requests'] += 1
+        response = fetchPage(session, url, 'detail')
+        detail = extract_detail(response.text)
+        if not detail['body_text']:
+            raise CrawlBlockedError(f"DCInside detail body was not found ({url})")
+        with getConnection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """UPDATE crawl_review_source
+                       SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
+                           body_hash=%s,image_urls=%s,crawled_at=CURRENT_TIMESTAMP
+                       WHERE id=%s""",
+                    (detail['nickname'] or candidate['nickname'], detail['author_id'],
+                     detail['ip_prefix'], detail['body_text'], detail['body_hash'],
+                     detail['image_urls'], candidate['id']),
+                )
+            conn.commit()
+
+
+def collectAndCompareSource(job, post_id, title, nickname, post_date, session, report,
+                            title_candidates):
+    if not title_candidates:
+        return None
+
     with getConnection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT 1 FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
-                (gallery_id, post_id),
+                "SELECT body_text FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
+                (job['gall_id'], post_id),
             )
-            return cursor.fetchone() is not None
-
-
-def collectAndCompareSource(job, post_id, title, nickname, post_date, session, report):
-    if sourceAlreadyCollected(job['gall_id'], post_id):
+            existing = cursor.fetchone()
+    if existing and existing[0]:
         return None
 
     if report['detail_requests'] >= MAX_DETAIL_REQUESTS:
@@ -311,18 +371,24 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
     if not detail['body_text']:
         raise CrawlBlockedError(f"DCInside detail body was not found ({url})")
 
+    hydrateTitleCandidates(title_candidates, session, report)
+
     with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                """INSERT INTO crawl_review_source
-                   (gallery_id,post_id,tab_key,db_category,title,nickname,author_id,
-                    ip_prefix,body_text,body_hash,image_urls,post_date)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (job['gall_id'], post_id, job['tab_key'], job['db_category'], title,
-                 detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
-                 detail['body_text'], detail['body_hash'], detail['image_urls'], post_date),
+                """UPDATE crawl_review_source
+                   SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
+                       body_hash=%s,image_urls=%s,crawled_at=CURRENT_TIMESTAMP
+                   WHERE gallery_id=%s AND post_id=%s""",
+                (detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
+                 detail['body_text'], detail['body_hash'], detail['image_urls'],
+                 job['gall_id'], post_id),
             )
-            source_id = cursor.lastrowid
+            cursor.execute(
+                "SELECT id FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
+                (job['gall_id'], post_id),
+            )
+            source_id = cursor.fetchone()['id']
 
             if not detail['body_text']:
                 candidates = []
@@ -471,18 +537,24 @@ def crawlByPage(job, dataList, report, findLastPage=False):
                 reply = 0
             postDate_datetime = parsePostDate(postDate)
             
-            if category!="whiskey":
-                #위갤의 증류소투어, 기타리뷰도 whiskey로 접근해야 하지만 DB 레벨에는 의미 구분을 위해서
-                #그냥 저장하기
-                #서비스 레벨(SpringBoot)에서 whiskey로 반환하기
-                dataList.append([category,id,title.strip(),nickname,recom,reply,postDate])
+            if job.get('storage') == 'liquor_review':
+                dataList.append([
+                    job['gall_id'], id, job['tab_key'], title.strip(), nickname,
+                    recom, reply, postDate,
+                ])
             else:
-                dataList.append([id,title,nickname,recom,reply,postDate])
+                dataList.append([category,id,title.strip(),nickname,recom,reply,postDate])
 
             if postDate_datetime >= DETAIL_SINCE_DATE and not report['detail_limit_reached']:
                 try:
+                    title_candidates = findTitleCandidates(
+                        job, id, title.strip(), nickname, postDate
+                    )
+                    if not title_candidates:
+                        report['detail_prefilter_skips'] += 1
                     observed = collectAndCompareSource(
-                        job, id, title.strip(), nickname, postDate, session, report
+                        job, id, title.strip(), nickname, postDate, session, report,
+                        title_candidates,
                     )
                     if observed is not None:
                         report['new_sources'] += 1
@@ -495,16 +567,16 @@ def crawlByPage(job, dataList, report, findLastPage=False):
             
             if len(dataList)>=batch_size:
                 print(id)
-                sqlUpload(dataList,category)
+                sqlUpload(dataList,job)
                 print(category,len(dataList),"upload completed")
                 dataList.clear()
 
         page+=1
     
     #마지막에 남은 데이터 업로드
-    sqlUpload(dataList,category)
+    sqlUpload(dataList,job)
 
-def sqlUpload(dataList,category):
+def sqlUpload(dataList,job):
     if not dataList:
         return
     conn = getConnection()
@@ -514,16 +586,21 @@ def sqlUpload(dataList,category):
     cursor.execute("SET NAMES utf8mb4")
     print("LETS UPLOAD")
 
-    #카테고리에 따라 다른 table을 사용함
-    sql = "REPLACE INTO "
-
-    if(category=="whiskey"):    
-        sql = sql + "whiskey_review" + """(id,title,nickname,recom,reply,post_date) 
-                VALUES(%s,%s,%s,%s,%s,%s)"""
+    if job.get('storage') == 'liquor_review':
+        sql = """INSERT INTO liquor_review
+                 (gallery_id,post_id,tab_key,title,nickname,recom,reply,post_date)
+                 VALUES(%s,%s,%s,%s,%s,%s,%s,%s)
+                 ON DUPLICATE KEY UPDATE
+                   tab_key=VALUES(tab_key), title=VALUES(title), nickname=VALUES(nickname),
+                   recom=VALUES(recom), reply=VALUES(reply), post_date=VALUES(post_date)"""
         cursor.executemany(sql,dataList)
     else:
-        sql = sql + "other_review" + """(category,id,title,nickname,recom,reply,post_date) 
-                VALUES(%s,%s,%s,%s,%s,%s,%s)"""
+        sql = """INSERT INTO other_review
+                 (category,id,title,nickname,recom,reply,post_date)
+                 VALUES(%s,%s,%s,%s,%s,%s,%s)
+                 ON DUPLICATE KEY UPDATE
+                   title=VALUES(title), nickname=VALUES(nickname), recom=VALUES(recom),
+                   reply=VALUES(reply), post_date=VALUES(post_date)"""
         cursor.executemany(sql,dataList)
     try:    
         conn.commit()
@@ -541,6 +618,7 @@ if __name__ == '__main__':
         'candidates': [],
         'detail_errors': [],
         'detail_requests': 0,
+        'detail_prefilter_skips': 0,
         'detail_limit_reached': False,
     }
     logging.info(

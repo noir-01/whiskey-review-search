@@ -1,3 +1,7 @@
+.env*
+*.sql
+!mariadb/migrations/*.sql
+
 __pycache__
 dc_crawling/__pycache__
 main/__pycache__
@@ -9,6 +13,7 @@ dc_crawling/cronlog.log
 auth/
 dc_crawling/reviewUpload.sh
 dc_crawling/reviewUpload.log
+backend/dc_crawling/logs/
 
 main/migrations/
 main/module/makeTrie.sh

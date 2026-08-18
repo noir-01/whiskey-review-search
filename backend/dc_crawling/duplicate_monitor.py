@@ -95,6 +95,11 @@ def similarity(left, right):
     }
 
 
+def title_similarity(left, right):
+    """Return a deliberately broad similarity score for list-page titles."""
+    return similarity(left, right)["score"]
+
+
 def same_images(left, right):
     a = {url for url in (left or "").splitlines() if url}
     b = {url for url in (right or "").splitlines() if url}
