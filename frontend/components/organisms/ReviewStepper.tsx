@@ -62,7 +62,15 @@ const ReviewStepper = ({ step }: { step: number }) => {
   };
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        flex: 1,
+        minHeight: 0,
+        gap: 1.5,
+      }}
+    >
       <Grid container spacing={1.5} columns={13}>
         <Grid item xs={6.5}>
           <Paper
@@ -187,6 +195,11 @@ const ReviewStepper = ({ step }: { step: number }) => {
         sx={{
           px: 1,
           pb: 0,
+          display: "flex",
+          flexDirection: "column",
+          flex: open ? "none" : 1,
+          minHeight: open ? 0 : "168px",
+          overflow: "hidden",
 
           ...(open && {
             mr: 1,
@@ -221,7 +234,9 @@ const ReviewStepper = ({ step }: { step: number }) => {
             width: "100%",
             bgcolor: "background.paper",
             borderRadius: 1,
-            height: open ? "80vh" : nameList.length >= 3 ? "10vh" : "15vh",
+            height: open ? "80vh" : "auto",
+            flex: open ? "none" : 1,
+            minHeight: open ? 0 : "120px",
             overflow: "auto",
           }}
         >

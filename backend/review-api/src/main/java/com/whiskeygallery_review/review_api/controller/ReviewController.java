@@ -1,7 +1,7 @@
 package com.whiskeygallery_review.review_api.controller;
 import com.whiskeygallery_review.review_api.dto.ReviewDto;
 import com.whiskeygallery_review.review_api.service.OtherReviewService;
-import com.whiskeygallery_review.review_api.service.WhiskeyReviewService;
+import com.whiskeygallery_review.review_api.service.LiquorReviewService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -14,11 +14,11 @@ import java.util.List;
 @RequestMapping("/api/review")
 public class ReviewController {
     @Autowired
-    private final WhiskeyReviewService whiskeyReviewService;
+    private final LiquorReviewService liquorReviewService;
     private final OtherReviewService otherReviewService;
 
-    public ReviewController(WhiskeyReviewService whiskeyReviewService, OtherReviewService otherReviewService) {
-        this.whiskeyReviewService = whiskeyReviewService;
+    public ReviewController(LiquorReviewService liquorReviewService, OtherReviewService otherReviewService) {
+        this.liquorReviewService = liquorReviewService;
         this.otherReviewService = otherReviewService;
     }
 
@@ -58,6 +58,6 @@ public class ReviewController {
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-        return whiskeyReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
+        return liquorReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
     }
 }

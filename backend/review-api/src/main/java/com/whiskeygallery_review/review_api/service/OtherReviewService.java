@@ -2,6 +2,7 @@ package com.whiskeygallery_review.review_api.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import com.whiskeygallery_review.review_api.entity.OtherReview;
 import com.whiskeygallery_review.review_api.repository.OtherReviewRepository;
@@ -13,6 +14,14 @@ import org.springframework.data.domain.Pageable;
 
 @Service
 public class OtherReviewService extends BaseReviewService<OtherReview> {
+
+    private static final List<String> ALL_OTHER_CATEGORIES = List.of(
+            "other", "distillery-tour", "brandy", "beer", "cock_tail",
+            "rum", "nuncestbibendum", "oaksusu-other"
+    );
+    private static final Set<String> DIRECT_OTHER_CATEGORIES = Set.of(
+            "brandy", "beer", "cock_tail", "rum", "nuncestbibendum"
+    );
 
     public OtherReviewService(OtherReviewRepository otherReviewRepository) {
         super(otherReviewRepository);
@@ -34,13 +43,15 @@ public class OtherReviewService extends BaseReviewService<OtherReview> {
     // frontend gallId → DB category 변환
     // "whiskey" gallId는 DB에서 "other", "distillery-tour" 두 카테고리에 해당
     private List<String> gallIdsToDbCategories(List<String> gallIds) {
-        if (gallIds == null || gallIds.isEmpty()) return null;
+        if (gallIds == null || gallIds.isEmpty()) return ALL_OTHER_CATEGORIES;
         List<String> categories = new ArrayList<>();
         for (String gallId : gallIds) {
             if ("whiskey".equals(gallId)) {
                 categories.add("other");
                 categories.add("distillery-tour");
-            } else {
+            } else if ("oaksusu".equals(gallId)) {
+                categories.add("oaksusu-other");
+            } else if (DIRECT_OTHER_CATEGORIES.contains(gallId)) {
                 categories.add(gallId);
             }
         }
@@ -65,6 +76,7 @@ public class OtherReviewService extends BaseReviewService<OtherReview> {
     private String toRouteCategory(String category) {
         return switch (category) {
             case "other", "distillery-tour" -> "whiskey";
+            case "oaksusu-other" -> "oaksusu";
             default -> category;
         };
     }

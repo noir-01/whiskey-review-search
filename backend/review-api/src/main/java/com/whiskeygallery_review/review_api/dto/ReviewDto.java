@@ -1,7 +1,5 @@
 package com.whiskeygallery_review.review_api.dto;
 
-import com.whiskeygallery_review.review_api.entity.OtherReview;
-import com.whiskeygallery_review.review_api.entity.WhiskeyReview;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import java.time.LocalDate;

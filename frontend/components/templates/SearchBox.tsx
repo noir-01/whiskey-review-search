@@ -33,6 +33,7 @@ const GALL_NAME_MAP: Record<string, string> = {
   cock_tail: "칵테일",
   nuncestbibendum: "세계주류",
   rum: "럼",
+  oaksusu: "옥수수물",
 };
 const ALL_OTHER_GALL_IDS = Object.keys(GALL_NAME_MAP);
 
@@ -793,13 +794,14 @@ const SearchBox = () => {
         <>
           <Box
             sx={{
-              flex: { xs: "0 1 auto", md: 1 },
+              flex:
+                data.length === 0 ? "0 0 auto" : { xs: "0 1 auto", md: 1 },
               minHeight: 0,
               display: "flex",
               flexDirection: "column",
               width: { xs: "90vw", sm: "95vw", md: "100%" },
               maxWidth: "680px",
-              mb: { xs: 1.5, md: 0 },
+              mb: { xs: "5vw", sm: "2.5vw", md: 3 },
             }}
           >
             <Box
@@ -827,7 +829,10 @@ const SearchBox = () => {
 
             <Box
               sx={{
-                flex: { xs: "0 1 auto", md: 1 },
+                flex:
+                  data.length === 0
+                    ? "0 0 auto"
+                    : { xs: "0 1 auto", md: 1 },
                 minHeight: 0,
                 display: "flex",
                 flexDirection: "column",
@@ -836,7 +841,7 @@ const SearchBox = () => {
                 width: "100%",
                 maxWidth: "680px",
                 overflow: "hidden",
-                pb: 1,
+                pb: data.length === 0 ? 0 : 1,
               }}
             >
               <Grid
@@ -849,7 +854,7 @@ const SearchBox = () => {
                   fontWeight: 700,
                   width: "100%",
                   textAlign: "center",
-                  py: 1,
+                  py: data.length === 0 ? 0.5 : 1,
                   borderBottom: "1px solid lightgray",
                 }}
               >
@@ -867,25 +872,34 @@ const SearchBox = () => {
               <Box
                 ref={boxRef}
                 sx={{
-                  flex: { xs: "0 1 auto", md: 1 },
+                  flex:
+                    data.length === 0
+                      ? "0 0 auto"
+                      : { xs: "0 1 auto", md: 1 },
                   minHeight: 0,
                   height: {
                     xs: "auto",
-                    md: "calc(100dvh - 464px)",
+                    md:
+                      data.length === 0
+                        ? "auto"
+                        : "calc(100dvh - 464px)",
                   },
-                  maxHeight: {
-                    xs: isOpenSearchTools
-                      ? isOtherSearch
-                        ? "max(160px, calc(var(--app-height) - 512px))"
-                        : "max(180px, calc(var(--app-height) - 432px))"
-                      : "max(220px, calc(var(--app-height) - 272px))",
-                    md: "calc(100dvh - 464px)",
-                  },
+                  maxHeight:
+                    data.length === 0
+                      ? "none"
+                      : {
+                          xs: isOpenSearchTools
+                            ? isOtherSearch
+                              ? "max(160px, calc(var(--app-height) - 512px))"
+                              : "max(180px, calc(var(--app-height) - 432px))"
+                            : "max(220px, calc(var(--app-height) - 272px))",
+                          md: "calc(100dvh - 464px)",
+                        },
                   transition: ".5s",
                   boxSizing: "border-box",
                   overflowY: "auto",
                   overflowX: "hidden",
-                  p: "6px",
+                  p: data.length === 0 ? 1 : "6px",
 
                   "&::-webkit-scrollbar": {
                     width: "6px",
@@ -1009,9 +1023,20 @@ const SearchBox = () => {
                   </Box>
                 )
               }
+              {!isFetching && data.length === 0 && (
+                <Box
+                  sx={{
+                    width: "100%",
+                    textAlign: "center",
+                    fontSize: "14px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  검색 결과가 없습니다.
+                </Box>
+              )}
               </Box>
 
-            {!isFetching && data.length === 0 && (<Box>검색결과가 없습니다.</Box>)}
             </Box>
           </Box>
         </>

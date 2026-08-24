@@ -8,10 +8,13 @@ export class ApiError extends Error {
   }
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
 const apiFetch = async <T>(url: string): Promise<T> => {
+  const targetUrl = `${API_BASE_URL}${url}`;
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(targetUrl);
   } catch {
     // fetch 자체가 throw = 네트워크 단절/서버 무응답 (상태 코드 없음)
     throw new ApiError("서버에 연결할 수 없습니다.");

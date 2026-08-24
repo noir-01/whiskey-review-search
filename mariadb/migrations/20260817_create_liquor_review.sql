@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS liquor_review (
-    row_id BIGINT NOT NULL AUTO_INCREMENT,
+    id BIGINT NOT NULL AUTO_INCREMENT,
     gallery_id VARCHAR(64) NOT NULL,
     post_id INT NOT NULL,
     tab_key VARCHAR(64) NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS liquor_review (
     reply INT,
     post_date DATE,
     nickname VARCHAR(255),
-    PRIMARY KEY (row_id),
+    PRIMARY KEY (id),
     UNIQUE KEY uq_liquor_review_source (gallery_id, post_id),
     KEY idx_liquor_review_post_date (post_date),
     FULLTEXT KEY ft_liquor_review_title (title)

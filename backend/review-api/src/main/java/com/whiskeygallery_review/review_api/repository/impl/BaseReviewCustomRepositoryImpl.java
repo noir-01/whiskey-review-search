@@ -28,14 +28,20 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
     private final StringPath titlePath;
     private final StringPath nicknamePath;
     private final StringPath categoryPath; // nullable - OtherReview 전용
+    private final String categoryColumnName;
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath) {
+        this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath, categoryPath == null ? null : "category");
+    }
+
+    public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath, String categoryColumnName) {
         this.queryFactory = queryFactory;
         this.entityManager = entityManager;
         this.entityPath = entityPath;
         this.titlePath = titlePath;
         this.nicknamePath = nicknamePath;
         this.categoryPath = categoryPath;
+        this.categoryColumnName = categoryColumnName;
     }
 
     private String buildMroongaQuery(List<String> andWords, List<String> orWords, String ageKeyword) {
@@ -121,7 +127,10 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         }
 
         if (categories != null && !categories.isEmpty()) {
-            whereClause.append(" AND category IN (");
+            if (!StringUtils.hasText(categoryColumnName)) {
+                throw new IllegalStateException("A category filter was supplied without a category column");
+            }
+            whereClause.append(" AND ").append(categoryColumnName).append(" IN (");
             for (int i = 0; i < categories.size(); i++) {
                 if (i > 0) whereClause.append(", ");
                 whereClause.append("?");

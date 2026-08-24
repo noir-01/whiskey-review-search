@@ -2,8 +2,6 @@ package com.whiskeygallery_review.review_api.repository;
 import com.querydsl.core.BooleanBuilder;
 import com.whiskeygallery_review.review_api.entity.OtherReview;
 import com.whiskeygallery_review.review_api.entity.QOtherReview;
-import com.whiskeygallery_review.review_api.entity.QWhiskeyReview;
-import com.whiskeygallery_review.review_api.entity.WhiskeyReview;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

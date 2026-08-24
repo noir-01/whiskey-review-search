@@ -81,7 +81,19 @@ const ReviewBox = () => {
   // );
 
   return (
-    <Box sx={{ width: "100%", pt: 2, maxWidth: "680px" }}>
+    <Box
+      sx={{
+        width: "100%",
+        height: { xs: "var(--app-height)", md: "100dvh" },
+        pt: 2,
+        pb: { xs: "5vw", sm: "2.5vw", md: 3 },
+        maxWidth: "680px",
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
       <Typography
         variant="h5"
         sx={{ fontWeight: 700, mb: 2, color: "#755139" }}
@@ -91,7 +103,14 @@ const ReviewBox = () => {
       {activeStep === 3 ? (
         <ResultStep handleReset={handleReset} handleBack={handleBack} />
       ) : (
-        <Box>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <Paper
             component="form"
             sx={{
@@ -99,7 +118,7 @@ const ReviewBox = () => {
               display: "flex",
               alignItems: "center",
               my: 1.5,
-              flex: 1,
+              flex: "0 0 36px",
               height: "36px",
             }}
           >

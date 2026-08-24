@@ -1,3 +1,7 @@
-node_modules/
-.next/
-.git/
+node_modules
+.next
+out
+.env
+.env.*
+npm-debug.log*
+yarn-error.log*

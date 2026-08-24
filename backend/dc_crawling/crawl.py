@@ -46,6 +46,12 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from gallery_master import GALLERY_MASTER
 from duplicate_monitor import extract_detail, similarity, same_images, title_similarity
 
+LIQUOR_REVIEW_TAB_KEYS = tuple(
+    job['tab_key'] for job in GALLERY_MASTER
+    if job.get('storage') == 'liquor_review'
+)
+LIQUOR_DEDUP_TAB_KEYS = {'oaksusu-other'}
+
 
 class CrawlBlockedError(RuntimeError):
     """Raised when DCInside appears to be rate-limiting or blocking this client."""
@@ -417,8 +423,9 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
             for candidate in candidates:
                 scores = similarity(detail['body_text'], candidate['body_text'])
                 images_equal = same_images(detail['image_urls'], candidate['image_urls'])
-                # This is intentionally broad: observation data, not an automatic merge.
-                if scores['score'] < 70 and not images_equal:
+                # Image URLs can change when the same image is uploaded again, so
+                # candidate detection is based on normalized text similarity only.
+                if scores['score'] < 70:
                     continue
                 left_id, right_id = sorted((source_id, candidate['id']))
                 cursor.execute(
@@ -440,6 +447,58 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
                     })
         conn.commit()
     return observed
+
+
+def hasLiquorDuplicate(job, post_id):
+    """Apply the existing author/body similarity rule against liquor reviews."""
+    if job['tab_key'] not in LIQUOR_DEDUP_TAB_KEYS or not LIQUOR_REVIEW_TAB_KEYS:
+        return False
+
+    placeholders = ", ".join(["%s"] * len(LIQUOR_REVIEW_TAB_KEYS))
+    with getConnection(dict_cursor=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
+                (job['gall_id'], post_id),
+            )
+            source = cursor.fetchone()
+            if not source or not source['body_text']:
+                return False
+
+            if source['author_id']:
+                cursor.execute(
+                    f"""SELECT * FROM crawl_review_source
+                         WHERE author_id=%s AND id<>%s AND post_date >= %s
+                           AND tab_key IN ({placeholders})""",
+                    (source['author_id'], source['id'], DETAIL_SINCE_DATE,
+                     *LIQUOR_REVIEW_TAB_KEYS),
+                )
+            else:
+                cursor.execute(
+                    f"""SELECT * FROM crawl_review_source
+                         WHERE author_id IS NULL AND id<>%s AND post_date >= %s
+                           AND tab_key IN ({placeholders})
+                           AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
+                    (source['id'], DETAIL_SINCE_DATE, *LIQUOR_REVIEW_TAB_KEYS,
+                     source['nickname'], source['ip_prefix'], source['body_hash']),
+                )
+            candidates = cursor.fetchall()
+
+    return any(
+        candidate['body_text']
+        and similarity(source['body_text'], candidate['body_text'])['score'] >= 70
+        for candidate in candidates
+    )
+
+
+def deleteDuplicateFromOtherReview(job, post_id):
+    with getConnection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM other_review WHERE category=%s AND id=%s",
+                (job['db_category'], post_id),
+            )
+        conn.commit()
 
 
 
@@ -559,6 +618,14 @@ def crawlByPage(job, dataList, report, findLastPage=False):
                     if observed is not None:
                         report['new_sources'] += 1
                         report['candidates'].extend(observed)
+
+                    if hasLiquorDuplicate(job, id):
+                        dataList.pop()
+                        deleteDuplicateFromOtherReview(job, id)
+                        logging.info(
+                            "Liquor duplicate excluded from other_review: %s/%s",
+                            liquor, id,
+                        )
                 except CrawlBlockedError:
                     raise
                 except Exception as e:
