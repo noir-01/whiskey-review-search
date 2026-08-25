@@ -17,8 +17,8 @@ jobs:
           key: ${{ secrets.IDENTITYFILE }}
           port: 2077
           command_timeout: 30m
-          script_stop: true
           script: |
+            set -euo pipefail
             cd /home/ubuntu/whiskey
             git pull origin main
             cd /home/ubuntu/whiskey/backend/review-api
