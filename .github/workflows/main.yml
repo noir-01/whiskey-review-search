@@ -25,3 +25,4 @@ jobs:
             ./gradlew build -x test
             cd /home/ubuntu/whiskey
             docker compose up --build -d --no-deps backend_lts
+            docker image prune -f
