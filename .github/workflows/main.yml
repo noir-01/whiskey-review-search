@@ -22,22 +22,40 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOSTNAME }}
-          username: ${{ secrets.USER }}
+          username: ubuntu
           key: ${{ secrets.IDENTITYFILE }}
-          port: ${{ secrets.PORT }}
+          port: 2077
           command_timeout: 30m
           script_stop: true
           script: |
             echo "#start"
             echo "user=$(whoami) home=$HOME"
-            cd /home/ubuntu/whiskey
+            echo "hostname=$(hostname)"
+            echo "pwd=$(pwd)"
+            echo "==== /home ===="
+            ls -la /home
+            echo "==== HOME/whiskey ===="
+            ls -la "$HOME/whiskey" || true
+
+            if [ -d "$HOME/whiskey/.git" ]; then
+              REPO_DIR="$HOME/whiskey"
+            elif [ -d /home/ubuntu/whiskey/.git ]; then
+              REPO_DIR=/home/ubuntu/whiskey
+            else
+              echo "whiskey repo not found on this host"
+              find /home -maxdepth 4 -name docker-compose.yml 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "############# REPO $REPO_DIR #############"
+            cd "$REPO_DIR"
             echo "############# GIT PULL #############"
             git pull origin main
 
             echo "############# BUILD BACKEND JAR #############"
-            cd /home/ubuntu/whiskey/backend/review-api
+            cd "$REPO_DIR/backend/review-api"
             ./gradlew build -x test
 
             echo "############# DOCKER REBUILD #############"
-            cd /home/ubuntu/whiskey
+            cd "$REPO_DIR"
             docker compose up --build -d --no-deps backend_lts
