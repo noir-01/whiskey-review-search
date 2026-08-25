@@ -25,9 +25,18 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.IDENTITYFILE }}
           port: ${{ secrets.PORT }}
+          command_timeout: 30m
+          script_stop: true
           script: |
             echo "#start"
-            cd ~/ReviewSearchVenv/src/whiskey
+            cd /home/ubuntu/whiskey
             echo "############# GIT PULL #############"
-            pass=$(git pull origin main)
-            echo $pass
+            git pull origin main
+
+            echo "############# BUILD BACKEND JAR #############"
+            cd backend/review-api
+            ./gradlew build -x test
+            cd /home/ubuntu/whiskey
+
+            echo "############# DOCKER REBUILD #############"
+            docker compose up --build -d --no-deps backend_lts
