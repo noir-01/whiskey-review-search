@@ -29,14 +29,15 @@ jobs:
           script_stop: true
           script: |
             echo "#start"
+            echo "user=$(whoami) home=$HOME"
             cd /home/ubuntu/whiskey
             echo "############# GIT PULL #############"
             git pull origin main
 
             echo "############# BUILD BACKEND JAR #############"
-            cd backend/review-api
+            cd /home/ubuntu/whiskey/backend/review-api
             ./gradlew build -x test
-            cd /home/ubuntu/whiskey
 
             echo "############# DOCKER REBUILD #############"
+            cd /home/ubuntu/whiskey
             docker compose up --build -d --no-deps backend_lts
