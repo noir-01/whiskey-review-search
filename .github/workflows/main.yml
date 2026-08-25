@@ -1,25 +1,16 @@
-# This is a basic workflow to help you get started with Actions
-
 name: CI
 
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: ["main"]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      # Runs a single command using the runners shell
-      - name: executing remote ssh commands using ssh key
-        uses: appleboy/ssh-action@master
+      - name: Deploy backend
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.HOSTNAME }}
           username: ubuntu
@@ -28,34 +19,9 @@ jobs:
           command_timeout: 30m
           script_stop: true
           script: |
-            echo "#start"
-            echo "user=$(whoami) home=$HOME"
-            echo "hostname=$(hostname)"
-            echo "pwd=$(pwd)"
-            echo "==== /home ===="
-            ls -la /home
-            echo "==== HOME/whiskey ===="
-            ls -la "$HOME/whiskey" || true
-
-            if [ -d "$HOME/whiskey/.git" ]; then
-              REPO_DIR="$HOME/whiskey"
-            elif [ -d /home/ubuntu/whiskey/.git ]; then
-              REPO_DIR=/home/ubuntu/whiskey
-            else
-              echo "whiskey repo not found on this host"
-              find /home -maxdepth 4 -name docker-compose.yml 2>/dev/null || true
-              exit 1
-            fi
-
-            echo "############# REPO $REPO_DIR #############"
-            cd "$REPO_DIR"
-            echo "############# GIT PULL #############"
+            cd /home/ubuntu/whiskey
             git pull origin main
-
-            echo "############# BUILD BACKEND JAR #############"
-            cd "$REPO_DIR/backend/review-api"
+            cd /home/ubuntu/whiskey/backend/review-api
             ./gradlew build -x test
-
-            echo "############# DOCKER REBUILD #############"
-            cd "$REPO_DIR"
+            cd /home/ubuntu/whiskey
             docker compose up --build -d --no-deps backend_lts
