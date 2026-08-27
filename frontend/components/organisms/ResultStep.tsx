@@ -53,8 +53,7 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
     try {
       await document.fonts?.ready;
 
-      const width = Math.max(element.scrollWidth, element.clientWidth);
-      const height = Math.max(element.scrollHeight, element.clientHeight);
+      const { width, height } = element.getBoundingClientRect();
       const maxCanvasDimension = 16384;
       const maxCanvasArea = 16777216;
       const scale = Math.max(
@@ -69,10 +68,7 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
 
       const canvas = await html2canvas(element, {
         scale,
-        width,
-        height,
-        windowWidth: width,
-        windowHeight: height,
+        backgroundColor: "#755139",
       });
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((result) => {
@@ -138,7 +134,12 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
   ];
 
   return (
-    <Box sx={{ mx: { xs: "-3vw", md: 0 } }}>
+    <Box
+      sx={{
+        width: { xs: "100vw", md: "auto" },
+        ml: { xs: "calc(50% - 50vw)", md: 0 },
+      }}
+    >
       <Box
         id="your-component-id"
         sx={{
@@ -147,7 +148,7 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
           borderRadius: 2,
           border: "2px solid #755139",
           height: "auto",
-          pb: 3,
+          pb: 2,
         }}
       >
         <Box
@@ -202,7 +203,7 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
           </Box>
         </Paper>
 
-        <Box sx={{ mb: 1, display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {[0, 1, 2].map((step: number) => {
             const isEmptyList = reviewList[step].elementList.length === 0;
             const isEmptyStep =
