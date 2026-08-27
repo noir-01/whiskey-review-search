@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import html2canvas from "html2canvas";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -13,6 +13,7 @@ import { useReviewStore } from "@/store/MemoReview";
 import { useWhiskeyStore } from "@/store/MemoWhiskey";
 import type { ElementType, ResultStepProps } from "@/types/review";
 import formattedTodayDate from "@/utils/formattedTodayDate";
+import snackbar from "@/utils/snackbar";
 
 import KeyboardReturnRoundedIcon from "@mui/icons-material/KeyboardReturnRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
@@ -28,6 +29,8 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
 
   const [isOpenResetCheckDialog, setIsOpenResetCheckDialog] = useState(false);
   const [isOpenPushDialog, setIsOpenPushDialog] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const downloadInProgress = useRef(false);
 
   const getNameList = (elementList: ElementType[]) =>
     elementList.map((element) => element.name);
@@ -36,17 +39,64 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
     elementList.map((element) => element.value);
 
   const handleClickDownload = async () => {
+    if (downloadInProgress.current) return;
+
     const element = document.getElementById("your-component-id");
-    const canvas = await html2canvas(element as HTMLElement, {
-      scale: 4,
-    });
+    if (!element) {
+      snackbar("저장할 리뷰를 찾지 못했습니다.");
+      return;
+    }
 
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `${formattedTodayDate()}_${whiskey.name}.png`;
-    link.click();
+    downloadInProgress.current = true;
+    setIsDownloading(true);
 
-    setIsOpenPushDialog(true);
+    try {
+      await document.fonts?.ready;
+
+      const width = Math.max(element.scrollWidth, element.clientWidth);
+      const height = Math.max(element.scrollHeight, element.clientHeight);
+      const maxCanvasDimension = 16384;
+      const maxCanvasArea = 16777216;
+      const scale = Math.max(
+        0.1,
+        Math.min(
+          4,
+          maxCanvasDimension / width,
+          maxCanvasDimension / height,
+          Math.sqrt(maxCanvasArea / (width * height))
+        )
+      );
+
+      const canvas = await html2canvas(element, {
+        scale,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+      });
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => {
+          if (result) resolve(result);
+          else reject(new Error("PNG 변환에 실패했습니다."));
+        }, "image/png");
+      });
+
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${formattedTodayDate()}_${whiskey.name}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+      setIsOpenPushDialog(true);
+    } catch (error) {
+      snackbar(`이미지 저장에 실패했습니다. (${String(error)})`);
+    } finally {
+      downloadInProgress.current = false;
+      setIsDownloading(false);
+    }
   };
 
   const rating = () => {
@@ -80,9 +130,10 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
       onClick: () => setIsOpenResetCheckDialog(true),
     },
     {
-      label: "Download",
+      label: isDownloading ? "Saving..." : "Download",
       icon: <DownloadIcon />,
       onClick: handleClickDownload,
+      disabled: isDownloading,
     },
   ];
 
@@ -95,7 +146,8 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
           p: 1,
           borderRadius: 2,
           border: "2px solid #755139",
-          height: "75%",
+          height: "auto",
+          pb: 3,
         }}
       >
         <Box
@@ -158,7 +210,7 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
               reviewList[step].comment === "" &&
               reviewList[step].score === "";
 
-            if (isEmptyStep) return <></>;
+            if (isEmptyStep) return null;
             return (
               <Paper key={step} sx={{ p: 1, height: "100%" }}>
                 <Box
@@ -220,10 +272,11 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
           mb: 5,
         }}
       >
-        {buttonList.map(({ label, icon, onClick }) => (
+        {buttonList.map(({ label, icon, onClick, disabled = false }) => (
           <Button
             key={label}
             onClick={onClick}
+            disabled={disabled}
             sx={{
               color: "#755139",
               fontWeight: 700,
