@@ -52,6 +52,9 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
 
     try {
       await document.fonts?.ready;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
 
       const { width, height } = element.getBoundingClientRect();
       const maxCanvasDimension = 16384;
@@ -69,6 +72,23 @@ const ResultStep = ({ handleBack, handleReset }: ResultStepProps) => {
       const canvas = await html2canvas(element, {
         scale,
         backgroundColor: "#755139",
+        onclone: (clonedDocument) => {
+          const originalCanvases = element.querySelectorAll("canvas");
+          const clonedElement = clonedDocument.getElementById(
+            "your-component-id"
+          );
+          const clonedCanvases = clonedElement?.querySelectorAll("canvas");
+
+          originalCanvases.forEach((originalCanvas, index) => {
+            const clonedCanvas = clonedCanvases?.[index];
+            const context = clonedCanvas?.getContext("2d");
+            if (!clonedCanvas || !context) return;
+
+            clonedCanvas.width = originalCanvas.width;
+            clonedCanvas.height = originalCanvas.height;
+            context.drawImage(originalCanvas, 0, 0);
+          });
+        },
       });
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((result) => {
