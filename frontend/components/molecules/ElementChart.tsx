@@ -51,6 +51,7 @@ const ElementChart = ({
         ],
       },
       options: {
+        ...(isHideLabel && { animation: false }),
         scales: {
           r: {
             suggestedMin: 0,
@@ -69,7 +70,7 @@ const ElementChart = ({
     });
 
     return () => myChart.destroy();
-  }, [id, isBarType, nameList, valueList]);
+  }, [id, isBarType, isHideLabel, nameList, valueList]);
 
   return <canvas id={id}></canvas>;
 };
