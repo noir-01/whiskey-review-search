@@ -17,8 +17,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements BaseReviewCustomRepository<T> {
 
@@ -29,12 +31,27 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
     private final StringPath nicknamePath;
     private final StringPath categoryPath; // nullable - OtherReview 전용
     private final String categoryColumnName;
+    private final String entityColumns;
+    private final String sourceJoin;
+    private final String ungroupedKey;
+    private final String representativePriority;
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath) {
-        this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath, categoryPath == null ? null : "category");
+        this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath,
+                categoryPath == null ? null : "category", "id,title,recom,reply,post_date,nickname",
+                null, "CAST(r.id AS CHAR)", "0");
     }
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath, String categoryColumnName) {
+        this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath,
+                categoryColumnName, "id,title,recom,reply,post_date,nickname",
+                null, "CAST(r.id AS CHAR)", "0");
+    }
+
+    public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager,
+            EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath,
+            StringPath categoryPath, String categoryColumnName, String entityColumns,
+            String sourceJoin, String ungroupedKey, String representativePriority) {
         this.queryFactory = queryFactory;
         this.entityManager = entityManager;
         this.entityPath = entityPath;
@@ -42,6 +59,10 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         this.nicknamePath = nicknamePath;
         this.categoryPath = categoryPath;
         this.categoryColumnName = categoryColumnName;
+        this.entityColumns = entityColumns;
+        this.sourceJoin = sourceJoin;
+        this.ungroupedKey = ungroupedKey;
+        this.representativePriority = representativePriority;
     }
 
     private String buildMroongaQuery(List<String> andWords, List<String> orWords, String ageKeyword) {
@@ -112,25 +133,33 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         if (StringUtils.hasText(mroongaSearchQuery)) {
             return searchWithNativeQuery(mroongaSearchQuery, nickname, categories, pageable);
         } else {
-            return searchWithQueryDSL(nickname, categories, pageable);
+            StringBuilder whereClause = new StringBuilder("1=1");
+            List<Object> whereParams = new ArrayList<>();
+            appendNativeFilters(whereClause, whereParams, nickname, categories);
+            return executeDeduplicatedNativeQuery(whereClause.toString(), whereParams, pageable);
         }
     }
 
     private Page<T> searchWithNativeQuery(String mroongaSearchQuery, String nickname, List<String> categories, Pageable pageable) {
-        StringBuilder whereClause = new StringBuilder("MATCH(title) AGAINST (? IN BOOLEAN MODE)");
+        StringBuilder whereClause = new StringBuilder("MATCH(r.title) AGAINST (? IN BOOLEAN MODE)");
         List<Object> whereParams = new ArrayList<>();
         whereParams.add(mroongaSearchQuery);
 
+        appendNativeFilters(whereClause, whereParams, nickname, categories);
+        return executeDeduplicatedNativeQuery(whereClause.toString(), whereParams, pageable);
+    }
+
+    private void appendNativeFilters(StringBuilder whereClause, List<Object> whereParams,
+            String nickname, List<String> categories) {
         if (StringUtils.hasText(nickname)) {
-            whereClause.append(" AND nickname = ?");
+            whereClause.append(" AND r.nickname = ?");
             whereParams.add(nickname);
         }
-
         if (categories != null && !categories.isEmpty()) {
             if (!StringUtils.hasText(categoryColumnName)) {
                 throw new IllegalStateException("A category filter was supplied without a category column");
             }
-            whereClause.append(" AND ").append(categoryColumnName).append(" IN (");
+            whereClause.append(" AND r.").append(categoryColumnName).append(" IN (");
             for (int i = 0; i < categories.size(); i++) {
                 if (i > 0) whereClause.append(", ");
                 whereClause.append("?");
@@ -138,24 +167,35 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
             whereClause.append(")");
             whereParams.addAll(categories);
         }
+    }
 
-        // 데이터 조회
+    private Page<T> executeDeduplicatedNativeQuery(String whereClause, List<Object> whereParams, Pageable pageable) {
+        String rankedQuery = buildRankedQuery(whereClause);
+        String orderColumn = pageable.getSort().stream().findFirst()
+                .map(order -> switch (order.getProperty()) {
+                    case "postDate" -> "post_date";
+                    case "recom" -> "recom";
+                    case "reply" -> "reply";
+                    default -> "id";
+                }).orElse("id");
+        String orderDirection = pageable.getSort().stream().findFirst()
+                .map(order -> order.isAscending() ? "ASC" : "DESC").orElse("DESC");
         List<Object> dataParams = new ArrayList<>(whereParams);
         dataParams.add(pageable.getPageSize());
         dataParams.add(pageable.getOffset());
 
         Query query = entityManager.createNativeQuery(
-                "SELECT * FROM " + getTableName() + " WHERE " + whereClause + " ORDER BY id DESC LIMIT ? OFFSET ?",
-                entityPath.getType()
-        );
+                "SELECT " + prefixedEntityColumns("ranked") + " FROM (" + rankedQuery
+                        + ") ranked WHERE duplicate_rank=1 ORDER BY ranked." + orderColumn + " "
+                        + orderDirection + ", ranked.id DESC LIMIT ? OFFSET ?",
+                entityPath.getType());
         for (int i = 0; i < dataParams.size(); i++) {
             query.setParameter(i + 1, dataParams.get(i));
         }
         List<T> content = query.getResultList();
 
-        // 카운트 쿼리 (동일한 WHERE 조건 재사용)
         Query countQuery = entityManager.createNativeQuery(
-                "SELECT COUNT(*) FROM " + getTableName() + " WHERE " + whereClause
+                "SELECT COUNT(*) FROM (" + rankedQuery + ") ranked WHERE duplicate_rank=1"
         );
         for (int i = 0; i < whereParams.size(); i++) {
             countQuery.setParameter(i + 1, whereParams.get(i));
@@ -163,6 +203,25 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         Long total = ((Number) countQuery.getSingleResult()).longValue();
 
         return new PageImpl<>(content, pageable, total);
+    }
+
+    private String buildRankedQuery(String whereClause) {
+        if (!StringUtils.hasText(sourceJoin)) {
+            return "SELECT r.*,1 AS duplicate_rank FROM " + getTableName() + " r WHERE " + whereClause;
+        }
+        return "SELECT r.*,ROW_NUMBER() OVER (PARTITION BY COALESCE(CONCAT('group:',dm.group_id),"
+                + "CONCAT('single:'," + ungroupedKey + ")) ORDER BY "
+                + "COALESCE(cs.published_at,TIMESTAMP(r.post_date)) ASC,"
+                + representativePriority + ",r.id ASC) AS duplicate_rank FROM "
+                + getTableName() + " r " + sourceJoin
+                + " LEFT JOIN review_duplicate_member dm ON dm.source_id=cs.id WHERE " + whereClause;
+    }
+
+    private String prefixedEntityColumns(String alias) {
+        return Arrays.stream(entityColumns.split(","))
+                .map(String::trim)
+                .map(column -> alias + "." + column)
+                .collect(Collectors.joining(","));
     }
 
     private Page<T> searchWithQueryDSL(String nickname, List<String> categories, Pageable pageable) {

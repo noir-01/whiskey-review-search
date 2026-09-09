@@ -59,20 +59,27 @@ def extract_detail(page_html):
 
     body = soup.select_one(".write_div") or soup.select_one(".writing_view_box")
     body_text = body.get_text("\n", strip=True) if body else ""
-    image_urls = []
+    pum_source = None
     if body:
-        for image in body.select("img[src]"):
-            src = image.get("src")
-            if src and src not in image_urls:
-                image_urls.append(src)
-
+        for script in body.select("script"):
+            script_text = script.string or script.get_text(" ", strip=True)
+            if "pum_ajax" not in script_text:
+                continue
+            gallery_match = re.search(r'["\']id["\']\s*:\s*["\']([^"\']+)["\']', script_text)
+            post_match = re.search(r'["\']no["\']\s*:\s*["\']?(\d+)', script_text)
+            if gallery_match and post_match:
+                pum_source = {
+                    "gallery_id": gallery_match.group(1),
+                    "post_id": int(post_match.group(1)),
+                }
+                break
     return {
         "nickname": nickname,
         "author_id": author_id,
         "ip_prefix": ip_prefix,
         "body_text": body_text,
         "body_hash": content_hash(body_text),
-        "image_urls": "\n".join(image_urls),
+        "pum_source": pum_source,
     }
 
 
@@ -98,9 +105,3 @@ def similarity(left, right):
 def title_similarity(left, right):
     """Return a deliberately broad similarity score for list-page titles."""
     return similarity(left, right)["score"]
-
-
-def same_images(left, right):
-    a = {url for url in (left or "").splitlines() if url}
-    b = {url for url in (right or "").splitlines() if url}
-    return bool(a and b and a == b)

@@ -55,6 +55,28 @@ docker exec mariadb mariadb -u <사용자> -p <DB명> -e "source /tmp/20260817_c
 
 `liquor_review`에는 위스키, 주라섬, 캠벨타운, 아일라, 옥수수물 갤러리의 리뷰 말머리가 들어갑니다. 기타리뷰, 증류소투어, 브랜디, 맥주, 칵테일, 럼, 세계주류는 `other_review`에 유지됩니다.
 
+중복 리뷰 그룹과 초 단위 작성 시각을 처음 적용할 때는 다음 마이그레이션을 실행합니다. 기존 후보 이력과 이미지 비교 컬럼은 삭제하지 않습니다.
+
+```powershell
+docker cp .\mariadb\migrations\20260826_add_review_duplicate_groups.sql mariadb:/tmp/20260826_add_review_duplicate_groups.sql
+docker exec mariadb mariadb -u <사용자> -p <DB명> -e "source /tmp/20260826_add_review_duplicate_groups.sql;"
+```
+
+본문 유사도 95 이상인 동일 작성자 후보는 기본적으로 자동 확정됩니다. 기준은 `CRAWL_AUTO_CONFIRM_SIMILARITY_THRESHOLD` 환경변수로 조절할 수 있습니다.
+
+### 중복 리뷰 판정과 검색 결과
+
+중복 판정은 목록 제목만으로 확정하지 않고, 다음 두 단계로 처리합니다.
+
+1. 최근 게시물 중 다른 갤러리의 동일 작성자 후보를 제목 유사도 45점 이상으로 선별합니다. 이 값은 `CRAWL_TITLE_SIMILARITY_THRESHOLD`로 조절합니다.
+2. 선별된 글의 본문을 공백과 대소문자를 정규화해 비교합니다. 전체 문자열 유사도와 `부분 유사도 × 글 길이 비율` 중 큰 값이 95점 이상이면 자동으로 같은 그룹에 넣습니다. 자동 확정 기준은 `CRAWL_AUTO_CONFIRM_SIMILARITY_THRESHOLD`로 조절합니다.
+
+검색 API는 같은 확정 그룹에서 한 글만 반환합니다. 작성 시각이 빠른 글을 우선하고, 시간이 같으면 위스키 갤러리 글을 대표로 선택합니다.
+
+중복 추적 기능 도입 전의 과거 데이터에는 본문과 확정 그룹이 없을 수 있습니다. 확정 그룹이 없는 검색 결과에만 보수적인 보조 규칙을 사용합니다. 작성자와 게시일이 같고, `위위리)`, `옥옥리)` 같은 짧은 리뷰 말머리를 제거한 제목이 동일하면 한 건으로 표시합니다. 따라서 교차 갤러리 복사뿐 아니라 같은 갤러리에 동일 메타데이터로 재게시된 글도 정리됩니다. 작성자가 없거나 날짜가 없으면 이 보조 규칙을 적용하지 않습니다.
+
+예를 들어 `데틀링 AB픽 CS 싱글배럴 (56.07%) by Ca'Momi`와 `위나리) 데틀링 AB픽 CS 싱글배럴 (56.07%) by Ca'Momi`가 같은 작성자와 날짜로 각각 옥수수물·위스키 갤러리에 있으면 대표 리뷰 검색 결과에는 위스키 글만 나타납니다.
+
 `backend/review-api/src/main/resources/secret.properties` 파일도 필요합니다. 이 파일은 Git에 올라가지 않으며, 백엔드 JAR를 빌드하기 전에 있어야 합니다.
 
 ```properties

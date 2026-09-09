@@ -36,6 +36,28 @@ const GALL_NAME_MAP: Record<string, string> = {
   oaksusu: "옥수수물",
 };
 const ALL_OTHER_GALL_IDS = Object.keys(GALL_NAME_MAP);
+const LIQUOR_GALL_NAME_MAP: Record<string, string> = {
+  whiskey: "위스키",
+  isleofjura: "주라섬",
+  campbeltown: "캠벨타운",
+  islay: "아일라",
+  oaksusu: "옥수수물",
+};
+
+type SubmittedSearch = {
+  searchInput: string;
+  searchOptionA2: string;
+  searchOptionA3: string;
+  searchOptionO1: string;
+  searchOptionO2: string;
+  searchOptionO3: string;
+  age: string;
+  nickname: string;
+  notWord: string;
+  isOtherSearch: boolean;
+  selectedGallIds: string[];
+  selectedLiquorGallId: string;
+};
 
 const SearchBox = () => {
   const router = useRouter();
@@ -59,6 +81,8 @@ const SearchBox = () => {
   const [isOpenSearchTools, setIsOpenSearchTools] = useState(true);
   const [isOtherSearch, setIsOtherSearch] = useState(false);
   const [selectedGallIds, setSelectedGallIds] = useState<Set<string>>(new Set(ALL_OTHER_GALL_IDS));
+  const [selectedLiquorGallId, setSelectedLiquorGallId] = useState("");
+  const [isOpenGalleryOptions, setIsOpenGalleryOptions] = useState(false);
   const [sortOption, setSortOption] = useState<SortOptionType>("최신순");
 
   const [visitedPostList, setVisitedPostList] = useState<number[]>([]);
@@ -68,6 +92,8 @@ const SearchBox = () => {
 
   const [isSearchButtonClicked,setIsSearchButtonClicked] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [submittedSearch, setSubmittedSearch] = useState<SubmittedSearch | null>(null);
+  const [searchRevision, setSearchRevision] = useState(0);
 
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
@@ -150,11 +176,25 @@ const SearchBox = () => {
     setDisplayedPost(20);
     setData([]);
     setHasMoreData(false);
+    setSubmittedSearch({
+      searchInput: searchInput.trim(),
+      searchOptionA2: searchOptionA2.trim(),
+      searchOptionA3: searchOptionA3.trim(),
+      searchOptionO1: searchOptionO1.trim(),
+      searchOptionO2: searchOptionO2.trim(),
+      searchOptionO3: searchOptionO3.trim(),
+      age: age.trim(),
+      nickname: nickname.trim(),
+      notWord: notWord.trim(),
+      isOtherSearch,
+      selectedGallIds: Array.from(selectedGallIds).sort(),
+      selectedLiquorGallId,
+    });
+    setSearchRevision((revision) => revision + 1);
 
     // URL 업데이트
     updateURLParams();
 
-    refetch();
   };
 
   const enterKeyEventOnSearch = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -167,35 +207,38 @@ const SearchBox = () => {
     }
   };
 
-  const getData = async (page = 0): Promise<Page<SearchType>> => {
-    const gallIdsQuery = isOtherSearch
-      ? Array.from(selectedGallIds).map(id => `gallIds=${encodeURIComponent(id)}`).join('&')
-      : '';
+  const getData = async (search: SubmittedSearch, page = 0): Promise<Page<SearchType>> => {
+    const galleryQuery = search.isOtherSearch
+      ? search.selectedGallIds.length > 0
+        ? search.selectedGallIds.map(id => `gallIds=${encodeURIComponent(id)}`).join('&')
+        : 'gallIds=__none__'
+      : search.selectedLiquorGallId ? `gallId=${encodeURIComponent(search.selectedLiquorGallId)}` : '';
 
     return apiFetch<Page<SearchType>>(
       `/api/review/${
-        isOtherSearch ? "other?" : "whiskey?"
-      }${searchInput.trim() ? `andWords=${encodeURIComponent(searchInput.trim())}&` : ""}`
-      + (searchOptionA2 ? `andWords=${encodeURIComponent(searchOptionA2)}&` : "")
-      + (searchOptionA3 ? `andWords=${encodeURIComponent(searchOptionA3)}&` : "")
-      + (searchOptionO1 ? `orWords=${encodeURIComponent(searchOptionO1)}&` : "")
-      + (searchOptionO2 ? `orWords=${encodeURIComponent(searchOptionO2)}&` : "")
-      + (searchOptionO3 ? `orWords=${encodeURIComponent(searchOptionO3)}&` : "")
-      + (age ? `age=${encodeURIComponent(age)}&` : "")
-      + (nickname ? `nickname=${encodeURIComponent(nickname)}&` : "")
-      + (notWord ? `notWord=${encodeURIComponent(notWord)}&` : "")
-      + (gallIdsQuery ? gallIdsQuery + '&' : '')
+        search.isOtherSearch ? "other?" : "whiskey?"
+      }${search.searchInput ? `andWords=${encodeURIComponent(search.searchInput)}&` : ""}`
+      + (search.searchOptionA2 ? `andWords=${encodeURIComponent(search.searchOptionA2)}&` : "")
+      + (search.searchOptionA3 ? `andWords=${encodeURIComponent(search.searchOptionA3)}&` : "")
+      + (search.searchOptionO1 ? `orWords=${encodeURIComponent(search.searchOptionO1)}&` : "")
+      + (search.searchOptionO2 ? `orWords=${encodeURIComponent(search.searchOptionO2)}&` : "")
+      + (search.searchOptionO3 ? `orWords=${encodeURIComponent(search.searchOptionO3)}&` : "")
+      + (search.age ? `age=${encodeURIComponent(search.age)}&` : "")
+      + (search.nickname ? `nickname=${encodeURIComponent(search.nickname)}&` : "")
+      + (search.notWord ? `notWord=${encodeURIComponent(search.notWord)}&` : "")
+      + (galleryQuery ? galleryQuery + '&' : '')
       + `page=${page}&size=20&sortField=postDate&direction=DESC`
     );
   };
   const queryClient = useQueryClient();
+  const searchCacheKey = ["search", searchRevision];
 
   //로딩 적용하지 않기 위해 별도 함수 작성
   const searchWithPage = async (page: number) => {
     try {
       const result = await queryClient.fetchQuery(
-        ["search",page],
-        () => getData(page)
+        [...searchCacheKey, page],
+        () => getData(submittedSearch!, page)
       );
       // 수동으로 onSuccess 로직 처리
       setHasMoreData(result.page.totalPages != result.page.number+1);
@@ -216,11 +259,11 @@ const SearchBox = () => {
     }
   };
 
-  const { isFetching, isInitialLoading, refetch } = useQuery(
-    ["search"],
-    () => getData(0),
+  const { isFetching, isInitialLoading } = useQuery(
+    [...searchCacheKey, 0],
+    () => getData(submittedSearch!, 0),
     {
-      enabled: searchInput.trim()!=="" && isSearchButtonClicked,
+      enabled: submittedSearch !== null && isSearchButtonClicked,
       keepPreviousData: true,
       refetchOnWindowFocus: false,
       staleTime: 1000 * 60 * 60,
@@ -278,9 +321,15 @@ const SearchBox = () => {
 
     // URL에 검색 파라미터가 있는 경우
     if (andWords || orWords || urlAge || urlNickname || urlNotWord) {
+      const initialAndWords = andWords ? (Array.isArray(andWords) ? andWords : [andWords]) : [];
+      const initialOrWords = orWords ? (Array.isArray(orWords) ? orWords : [orWords]) : [];
+      const initialAge = urlAge ? (Array.isArray(urlAge) ? urlAge[0] : urlAge) : "";
+      const initialNickname = urlNickname ? (Array.isArray(urlNickname) ? urlNickname[0] : urlNickname) : "";
+      const initialNotWord = urlNotWord ? (Array.isArray(urlNotWord) ? urlNotWord[0] : urlNotWord) : "";
+      const initialIsOtherSearch = type === "other";
       // AND 검색어 설정
       if (andWords) {
-        const andWordsArray = Array.isArray(andWords) ? andWords : [andWords];
+        const andWordsArray = initialAndWords;
         if (andWordsArray[0]) setSearchInput(andWordsArray[0]);
         if (andWordsArray[1]) setSearchOptionA2(andWordsArray[1]);
         if (andWordsArray[2]) setSearchOptionA3(andWordsArray[2]);
@@ -288,7 +337,7 @@ const SearchBox = () => {
 
       // OR 검색어 설정
       if (orWords) {
-        const orWordsArray = Array.isArray(orWords) ? orWords : [orWords];
+        const orWordsArray = initialOrWords;
         if (orWordsArray[0]) setSearchOptionO1(orWordsArray[0]);
         if (orWordsArray[1]) setSearchOptionO2(orWordsArray[1]);
         if (orWordsArray[2]) setSearchOptionO3(orWordsArray[2]);
@@ -300,14 +349,27 @@ const SearchBox = () => {
       if (urlNotWord) setNotWord(Array.isArray(urlNotWord) ? urlNotWord[0] : urlNotWord);
       if (type === "other") setIsOtherSearch(true);
 
+      setSubmittedSearch({
+        searchInput: initialAndWords[0] || "",
+        searchOptionA2: initialAndWords[1] || "",
+        searchOptionA3: initialAndWords[2] || "",
+        searchOptionO1: initialOrWords[0] || "",
+        searchOptionO2: initialOrWords[1] || "",
+        searchOptionO3: initialOrWords[2] || "",
+        age: initialAge,
+        nickname: initialNickname,
+        notWord: initialNotWord,
+        isOtherSearch: initialIsOtherSearch,
+        selectedGallIds: Array.from(selectedGallIds).sort(),
+        selectedLiquorGallId,
+      });
+      setSearchRevision((revision) => revision + 1);
+
       // 검색 실행
       setIsSearchButtonClicked(true);
       setIsInitialLoad(false);
 
       // 검색 실행 (약간의 지연을 두어 상태가 업데이트된 후 실행)
-      setTimeout(() => {
-        refetch();
-      }, 100);
     } else {
       setIsInitialLoad(false);
     }
@@ -475,9 +537,9 @@ const SearchBox = () => {
             sx={{
               width: "100%",
               maxHeight: isOpenSearchTools
-                ? isOtherSearch
-                  ? { xs: "360px", md: "320px" }
-                  : "280px"
+                ? isOpenGalleryOptions
+                  ? { xs: "500px", md: "440px" }
+                  : { xs: "360px", md: "320px" }
                 : 0,
               overflow: "hidden",
               transition: ".5s",
@@ -676,7 +738,33 @@ const SearchBox = () => {
                 {isOtherSearch ? "리뷰 검색기" : "기타 리뷰 검색기"}
               </Button>
             </Box>
-            {isOtherSearch && (
+            <Button
+              type="button"
+              size="small"
+              onClick={() => setIsOpenGalleryOptions((prev) => !prev)}
+              sx={{
+                mt: 1,
+                width: "100%",
+                justifyContent: "space-between",
+                color: "#755139",
+                borderColor: "#755139",
+                fontSize: "0.8rem",
+              }}
+              variant="outlined"
+            >
+              <span>갤러리 선택</span>
+              <span>
+                {isOtherSearch
+                  ? selectedGallIds.size === ALL_OTHER_GALL_IDS.length
+                    ? "전체"
+                    : `${selectedGallIds.size}개 선택`
+                  : selectedLiquorGallId
+                    ? LIQUOR_GALL_NAME_MAP[selectedLiquorGallId]
+                    : "대표 리뷰"}
+                {isOpenGalleryOptions ? " ▲" : " ▼"}
+              </span>
+            </Button>
+            {!isOtherSearch && isOpenGalleryOptions && (
               <Box sx={{ display: "flex", width: "100%", mt: 1, mb: 0, gap: 1.5, alignItems: "center" }}>
                 <Box
                   sx={{
@@ -697,7 +785,73 @@ const SearchBox = () => {
                 >
                   갤러리
                 </Box>
-                <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", flex: 1 }}>
+                <Box sx={{
+                  display: { xs: "grid", sm: "flex" },
+                  gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "none" },
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  flex: 1,
+                  width: "100%",
+                }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={selectedLiquorGallId === ""}
+                        onChange={() => setSelectedLiquorGallId("")}
+                        sx={{ color: "#755139", "&.Mui-checked": { color: "#755139" }, py: 0, px: "2px" }}
+                      />
+                    }
+                    label="대표 리뷰"
+                    sx={{ mr: 1.5, "& .MuiFormControlLabel-label": { fontSize: "0.8rem", fontWeight: 700 } }}
+                  />
+                  {Object.entries(LIQUOR_GALL_NAME_MAP).map(([gallId, gallName]) => (
+                    <FormControlLabel
+                      key={gallId}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={selectedLiquorGallId === gallId}
+                          onChange={() => setSelectedLiquorGallId(gallId)}
+                          sx={{ color: "#755139", "&.Mui-checked": { color: "#755139" }, py: 0, px: "2px" }}
+                        />
+                      }
+                      label={gallName}
+                      sx={{ mr: 1.5, "& .MuiFormControlLabel-label": { fontSize: "0.8rem" } }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+            {isOtherSearch && isOpenGalleryOptions && (
+              <Box sx={{ display: "flex", width: "100%", mt: 1, mb: 0, gap: 1.5, alignItems: "center" }}>
+                <Box
+                  sx={{
+                    backgroundColor: "#755139",
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    alignSelf: "flex-start",
+                    color: "white",
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    p: 0.5,
+                    pb: 0,
+                    width: "58px",
+                    flexShrink: 0,
+                    fontSize: "0.875rem",
+                  }}
+                >
+                  갤러리
+                </Box>
+                <Box sx={{
+                  display: { xs: "grid", sm: "flex" },
+                  gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "none" },
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  flex: 1,
+                  width: "100%",
+                }}>
                   <FormControlLabel
                     control={
                       <Checkbox

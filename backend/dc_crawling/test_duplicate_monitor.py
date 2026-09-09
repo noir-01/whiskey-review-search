@@ -19,6 +19,25 @@ class DuplicateMonitorTest(unittest.TestCase):
         self.assertEqual("center0457", detail["author_id"])
         self.assertEqual("작성자", detail["nickname"])
         self.assertIn("맛은 사과", detail["body_text"])
+        self.assertIsNone(detail["pum_source"])
+
+    def test_extracts_pum_source_without_treating_script_as_body(self):
+        page = r'''
+        <div class="write_div">
+          <script>
+          (function(){
+            var u="https:\/\/gall.dcinside.com\/ajax\/pum_ajax\/get_contents";
+            var data={"ci_t":null,"_GALLTYPE_":"","id":"whiskey","no":1777164};
+          })();
+          </script>
+        </div>
+        '''
+        detail = extract_detail(page)
+        self.assertEqual("", detail["body_text"])
+        self.assertEqual(
+            {"gallery_id": "whiskey", "post_id": 1777164},
+            detail["pum_source"],
+        )
 
     def test_normalization_ignores_spacing(self):
         self.assertEqual(normalize_text("향 은\n바닐라"), normalize_text("향은 바닐라"))

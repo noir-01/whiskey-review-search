@@ -38,7 +38,7 @@ services:
   backend_dev:
     build:
       context: ./backend/review-api
-    image: noir2001/whiskey-backend:v5.3
+    image: noir2001/whiskey-backend:v5.5
     container_name: whiskey-backend-test
     environment:
       - MARIADB_DATABASE=${MARIADB_DATABASE}
@@ -75,7 +75,7 @@ services:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
         - NEXT_PUBLIC_GIST_ID=${NEXT_PUBLIC_GIST_ID}
         - DISABLE_PWA=true
-    image: noir2001/whiskey-frontend:v5.3
+    image: noir2001/whiskey-frontend:v5.5
     container_name: whiskey-frontend-test
     expose:
       - "3000"
@@ -121,7 +121,7 @@ services:
     build:
       context: ./backend/dc_crawling
       dockerfile: Dockerfile
-    image: noir2001/whiskey-monitor:v2
+    image: noir2001/whiskey-monitor:v5
     container_name: python-app
     working_dir: /app
     environment:
@@ -140,6 +140,7 @@ services:
       - CRAWL_DETAIL_LOOKBACK_DAYS=${CRAWL_DETAIL_LOOKBACK_DAYS:-30}
       - CRAWL_MAX_DETAIL_REQUESTS=${CRAWL_MAX_DETAIL_REQUESTS:-200}
       - CRAWL_TITLE_SIMILARITY_THRESHOLD=${CRAWL_TITLE_SIMILARITY_THRESHOLD:-45}
+      - CRAWL_AUTO_CONFIRM_SIMILARITY_THRESHOLD=${CRAWL_AUTO_CONFIRM_SIMILARITY_THRESHOLD:-95}
       - CRAWL_MAX_TITLE_CANDIDATES=${CRAWL_MAX_TITLE_CANDIDATES:-5}
       - CRAWL_LIST_DELAY_MIN=${CRAWL_LIST_DELAY_MIN:-1}
       - CRAWL_LIST_DELAY_MAX=${CRAWL_LIST_DELAY_MAX:-2}
