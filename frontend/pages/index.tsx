@@ -5,6 +5,7 @@ import Grid from "@mui/material/Grid";
 
 import ReviewBox from "@/components/templates/ReviewBox";
 import SearchBox from "@/components/templates/SearchBox";
+import NoticeBar from "@/components/atoms/NoticeBar";
 
 import BorderColorIcon from "@mui/icons-material/BorderColor";
 import SearchIcon from "@mui/icons-material/Search";
@@ -13,6 +14,7 @@ import * as gtag from "../utils/gtag";
 
 export default function Home() {
   const [isSearchBox, setIsSearchBox] = useState(true);
+  const [isNoticeVisible, setIsNoticeVisible] = useState(false);
 
   useEffect(() => {
     window.onbeforeunload = async (event) => {
@@ -36,72 +38,86 @@ export default function Home() {
   }, [router]);
 
   return (
-    <Grid
-      container
+    <Box
       sx={{
         display: "flex",
-        backgroundColor: "#F2EDD7",
+        flexDirection: "column",
         width: "100%",
         height: "100vh",
-        justifyContent: "space-evenly",
-        overflow: "auto",
+        backgroundColor: "#F2EDD7",
+        overflow: "hidden",
       }}
     >
-      <Grid
-        item
-        xs={0}
-        md={5.5}
-        sx={{
-          display: { xs: !isSearchBox ? "none" : "flex", md: "flex" },
-          justifyContent: "center",
-        }}
-      >
-        <SearchBox />
-      </Grid>
-      <Grid
-        item
-        xs={11}
-        md={5.5}
-        sx={{
-          display: { xs: isSearchBox ? "none" : "flex", md: "flex" },
-          justifyContent: "center",
-        }}
-      >
-        <ReviewBox />
-      </Grid>
+      <NoticeBar onVisibilityChange={setIsNoticeVisible} />
 
-      <Box
-        onClick={() => setIsSearchBox(!isSearchBox)}
+      <Grid
+        container
         sx={{
-          display: { xs: "block", md: "none" },
-          position: "fixed",
-          top: "16px",
-          right: "20px",
+          display: "flex",
           backgroundColor: "#F2EDD7",
-          cursor: "pointer",
-          zIndex: 10,
-          p: 1,
-          borderRadius: 10,
-          boxShadow: "2px 2px 6px 2px rgba(0, 0, 0, 0.25)",
-
-          ":hover": { backgroundColor: "#F2EDD7" },
+          width: "100%",
+          flex: 1,
+          justifyContent: "space-evenly",
+          overflow: "auto",
         }}
       >
-        <Box
+        <Grid
+          item
+          xs={0}
+          md={5.5}
           sx={{
-            display: "flex",
-            gap: 0.5,
-            fontSize: "12px",
-            fontWeight: 700,
-            alignItems: "center",
-            color: "#755139",
-            svg: { fontSize: "16px", color: "#755139" },
+            display: { xs: !isSearchBox ? "none" : "flex", md: "flex" },
+            justifyContent: "center",
           }}
         >
-          {isSearchBox ? <BorderColorIcon /> : <SearchIcon />}
-          {isSearchBox ? "리뷰 작성하기" : "리뷰 검색하기"}
+          <SearchBox />
+        </Grid>
+        <Grid
+          item
+          xs={11}
+          md={5.5}
+          sx={{
+            display: { xs: isSearchBox ? "none" : "flex", md: "flex" },
+            justifyContent: "center",
+          }}
+        >
+          <ReviewBox />
+        </Grid>
+
+        <Box
+          onClick={() => setIsSearchBox(!isSearchBox)}
+          sx={{
+            display: { xs: "block", md: "none" },
+            position: "fixed",
+            top: isNoticeVisible ? "52px" : "16px",
+            right: "20px",
+            backgroundColor: "#F2EDD7",
+            cursor: "pointer",
+            zIndex: 10,
+            p: 1,
+            borderRadius: 10,
+            boxShadow: "2px 2px 6px 2px rgba(0, 0, 0, 0.25)",
+            transition: "top 0.3s ease",
+
+            ":hover": { backgroundColor: "#F2EDD7" },
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              gap: 0.5,
+              fontSize: "12px",
+              fontWeight: 700,
+              alignItems: "center",
+              color: "#755139",
+              svg: { fontSize: "16px", color: "#755139" },
+            }}
+          >
+            {isSearchBox ? <BorderColorIcon /> : <SearchIcon />}
+            {isSearchBox ? "리뷰 작성하기" : "리뷰 검색하기"}
+          </Box>
         </Box>
-      </Box>
-    </Grid>
+      </Grid>
+    </Box>
   );
 }

@@ -57,6 +57,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+        - NEXT_PUBLIC_GIST_ID=${NEXT_PUBLIC_GIST_ID}
     image: whiskey-frontend:v5.1
     restart: always
     container_name: whiskey-frontend-lts
@@ -72,6 +73,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+        - NEXT_PUBLIC_GIST_ID=${NEXT_PUBLIC_GIST_ID}
         - DISABLE_PWA=true
     image: noir2001/whiskey-frontend:v5.3
     container_name: whiskey-frontend-test
@@ -92,6 +94,7 @@ services:
       - whiskey_frontend_node_modules:/app/node_modules
     environment:
       - NEXT_PUBLIC_GA_ID=${NEXT_PUBLIC_GA_ID}
+      - NEXT_PUBLIC_GIST_ID=${NEXT_PUBLIC_GIST_ID}
       - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8081}
       - DISABLE_PWA=true
       - CHOKIDAR_USEPOLLING=true
