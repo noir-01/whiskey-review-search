@@ -78,13 +78,7 @@ const NoticeBar: React.FC<NoticeBarProps> = ({ onVisibilityChange }) => {
     return null;
   }
 
-  // 만료 예정 시각 포맷 (예: "19:30")
-  const formatEndTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
-  };
+
 
   return (
     <Box
@@ -149,18 +143,6 @@ const NoticeBar: React.FC<NoticeBarProps> = ({ onVisibilityChange }) => {
             공지
           </Box>
           <Box component="span">{notice.message}</Box>
-          {notice.expiresAt && (
-            <Box
-              component="span"
-              sx={{
-                fontSize: { xs: "11px", sm: "12px" },
-                color: "rgba(242, 237, 215, 0.8)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              (~{formatEndTime(notice.expiresAt)} 종료 예정)
-            </Box>
-          )}
         </Typography>
       </Box>
 
