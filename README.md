@@ -75,6 +75,13 @@ docker exec mariadb mariadb -u <사용자> -p <DB명> -e "source /tmp/20260826_a
 
 중복 추적 기능 도입 전의 과거 데이터에는 본문과 확정 그룹이 없을 수 있습니다. 확정 그룹이 없는 검색 결과에만 보수적인 보조 규칙을 사용합니다. 작성자와 게시일이 같고, `위위리)`, `옥옥리)` 같은 짧은 리뷰 말머리를 제거한 제목이 동일하면 한 건으로 표시합니다. 따라서 교차 갤러리 복사뿐 아니라 같은 갤러리에 동일 메타데이터로 재게시된 글도 정리됩니다. 작성자가 없거나 날짜가 없으면 이 보조 규칙을 적용하지 않습니다.
 
+과거 데이터의 보조 중복 키는 검색할 때마다 계산하지 않고 `review_search_duplicate`에 미리 저장합니다. 기존 DB에는 다음 마이그레이션을 한 번 실행해야 합니다. 리뷰 데이터를 대량으로 수동 이관한 경우에도 이 파일을 다시 실행하면 보조 중복 키가 갱신됩니다.
+
+```powershell
+docker cp .\mariadb\migrations\20260909_add_search_duplicate_index.sql mariadb:/tmp/20260909_add_search_duplicate_index.sql
+docker exec mariadb mariadb -u <사용자> -p <DB명> -e "source /tmp/20260909_add_search_duplicate_index.sql;"
+```
+
 예를 들어 `데틀링 AB픽 CS 싱글배럴 (56.07%) by Ca'Momi`와 `위나리) 데틀링 AB픽 CS 싱글배럴 (56.07%) by Ca'Momi`가 같은 작성자와 날짜로 각각 옥수수물·위스키 갤러리에 있으면 대표 리뷰 검색 결과에는 위스키 글만 나타납니다.
 
 `backend/review-api/src/main/resources/secret.properties` 파일도 필요합니다. 이 파일은 Git에 올라가지 않으며, 백엔드 JAR를 빌드하기 전에 있어야 합니다.

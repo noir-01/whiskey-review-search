@@ -35,23 +35,34 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
     private final String sourceJoin;
     private final String ungroupedKey;
     private final String representativePriority;
+    private final String deduplicationFilter;
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath) {
         this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath,
                 categoryPath == null ? null : "category", "id,title,recom,reply,post_date,nickname",
-                null, "CAST(r.id AS CHAR)", "0");
+                null, "CAST(r.id AS CHAR)", "0", null);
     }
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager, EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath, StringPath categoryPath, String categoryColumnName) {
         this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath,
                 categoryColumnName, "id,title,recom,reply,post_date,nickname",
-                null, "CAST(r.id AS CHAR)", "0");
+                null, "CAST(r.id AS CHAR)", "0", null);
     }
 
     public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager,
             EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath,
             StringPath categoryPath, String categoryColumnName, String entityColumns,
             String sourceJoin, String ungroupedKey, String representativePriority) {
+        this(queryFactory, entityManager, entityPath, titlePath, nicknamePath, categoryPath,
+                categoryColumnName, entityColumns, sourceJoin, ungroupedKey,
+                representativePriority, null);
+    }
+
+    public BaseReviewCustomRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager,
+            EntityPath<T> entityPath, StringPath titlePath, StringPath nicknamePath,
+            StringPath categoryPath, String categoryColumnName, String entityColumns,
+            String sourceJoin, String ungroupedKey, String representativePriority,
+            String deduplicationFilter) {
         this.queryFactory = queryFactory;
         this.entityManager = entityManager;
         this.entityPath = entityPath;
@@ -63,6 +74,7 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
         this.sourceJoin = sourceJoin;
         this.ungroupedKey = ungroupedKey;
         this.representativePriority = representativePriority;
+        this.deduplicationFilter = deduplicationFilter;
     }
 
     private String buildMroongaQuery(List<String> andWords, List<String> orWords, String ageKeyword) {
@@ -208,6 +220,11 @@ public class BaseReviewCustomRepositoryImpl<T extends BaseReview> implements Bas
     private String buildRankedQuery(String whereClause) {
         if (!StringUtils.hasText(sourceJoin)) {
             return "SELECT r.*,1 AS duplicate_rank FROM " + getTableName() + " r WHERE " + whereClause;
+        }
+        if (StringUtils.hasText(deduplicationFilter)) {
+            return "SELECT r.*,1 AS duplicate_rank FROM " + getTableName() + " r " + sourceJoin
+                    + " LEFT JOIN review_duplicate_member dm ON dm.source_id=cs.id WHERE ("
+                    + whereClause + ") AND (" + deduplicationFilter + ")";
         }
         return "SELECT r.*,ROW_NUMBER() OVER (PARTITION BY COALESCE(CONCAT('group:',dm.group_id),"
                 + "CONCAT('single:'," + ungroupedKey + ")) ORDER BY "

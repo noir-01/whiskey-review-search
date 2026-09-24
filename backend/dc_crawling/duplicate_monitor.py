@@ -1,4 +1,3 @@
-import hashlib
 import html
 import re
 import unicodedata
@@ -31,10 +30,6 @@ def normalize_text(value):
     # Layout differences are irrelevant for copied-post detection. Keep
     # punctuation/numbers because ABV and tasting scores are meaningful.
     return re.sub(r"\s+", "", value).strip()
-
-
-def content_hash(value):
-    return hashlib.sha256(normalize_text(value).encode("utf-8")).hexdigest()
 
 
 def extract_detail(page_html):
@@ -78,7 +73,6 @@ def extract_detail(page_html):
         "author_id": author_id,
         "ip_prefix": ip_prefix,
         "body_text": body_text,
-        "body_hash": content_hash(body_text),
         "pum_source": pum_source,
     }
 

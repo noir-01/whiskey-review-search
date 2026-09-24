@@ -274,16 +274,14 @@ def ensureMonitorTables():
             author_id VARCHAR(255),
             ip_prefix VARCHAR(64),
             body_text LONGTEXT,
-            body_hash CHAR(64),
             post_date DATE,
             published_at DATETIME,
             crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY uq_crawl_source (gallery_id, post_id),
-            KEY idx_crawl_author (author_id),
-            KEY idx_crawl_body_hash (body_hash),
-            KEY idx_crawl_storage (db_category, post_id),
-            KEY idx_crawl_anon (nickname, ip_prefix)
+            KEY idx_crawl_author_date (author_id, post_date),
+            KEY idx_crawl_nickname_date (nickname, post_date),
+            KEY idx_crawl_post_id (post_id)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
         """CREATE TABLE IF NOT EXISTS crawl_duplicate_candidate (
             id BIGINT NOT NULL AUTO_INCREMENT,
@@ -339,7 +337,20 @@ def ensureMonitorTables():
                 "ALTER TABLE crawl_review_source ADD COLUMN IF NOT EXISTS published_at DATETIME NULL AFTER post_date"
             )
             cursor.execute(
-                "ALTER TABLE crawl_review_source ADD INDEX IF NOT EXISTS idx_crawl_storage (db_category,post_id)"
+                "ALTER TABLE crawl_review_source ADD INDEX IF NOT EXISTS idx_crawl_post_id (post_id)"
+            )
+            # Equality columns precede the date range used to shortlist candidates.
+            # Keep post_id/source keys for review and source-identity joins.
+            cursor.execute(
+                "ALTER TABLE crawl_review_source "
+                "ADD INDEX IF NOT EXISTS idx_crawl_author_date (author_id,post_date), "
+                "ADD INDEX IF NOT EXISTS idx_crawl_nickname_date (nickname,post_date), "
+                "DROP INDEX IF EXISTS idx_crawl_author, "
+                "DROP INDEX IF EXISTS idx_crawl_anon, "
+                "DROP INDEX IF EXISTS idx_crawl_anon_date, "
+                "DROP INDEX IF EXISTS idx_crawl_storage, "
+                "DROP INDEX IF EXISTS idx_crawl_body_hash, "
+                "DROP COLUMN IF EXISTS body_hash"
             )
         conn.commit()
 
@@ -399,10 +410,10 @@ def hydrateTitleCandidates(title_candidates, session, report):
                 cursor.execute(
                     """UPDATE crawl_review_source
                        SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
-                           body_hash=%s,crawled_at=CURRENT_TIMESTAMP
+                           crawled_at=CURRENT_TIMESTAMP
                        WHERE id=%s""",
                     (detail['nickname'] or candidate['nickname'], detail['author_id'],
-                     detail['ip_prefix'], detail['body_text'], detail['body_hash'],
+                     detail['ip_prefix'], detail['body_text'],
                      candidate['id']),
                 )
             conn.commit()
@@ -493,6 +504,25 @@ def backfillConfirmedDuplicateGroups():
         conn.commit()
 
 
+def findBodyCandidates(cursor, gallery_id, source_id, nickname, detail):
+    """Shortlist by author hints and date; neither IP nor exact text is identity."""
+    if detail['author_id']:
+        cursor.execute(
+            """SELECT id,gallery_id,post_id,title,body_text FROM crawl_review_source
+               WHERE author_id=%s AND gallery_id<>%s AND id<>%s
+                 AND post_date >= %s""",
+            (detail['author_id'], gallery_id, source_id, DETAIL_SINCE_DATE),
+        )
+        return 'gallog_id', cursor.fetchall()
+    cursor.execute(
+        """SELECT id,gallery_id,post_id,title,body_text FROM crawl_review_source
+           WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
+             AND post_date >= %s AND nickname=%s""",
+        (gallery_id, source_id, DETAIL_SINCE_DATE, detail['nickname'] or nickname),
+    )
+    return 'anonymous_hint', cursor.fetchall()
+
+
 def collectAndCompareSource(job, post_id, title, nickname, post_date, session, report,
                             title_candidates):
     if not title_candidates:
@@ -530,10 +560,10 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
             cursor.execute(
                 """UPDATE crawl_review_source
                        SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
-                           body_hash=%s,crawled_at=CURRENT_TIMESTAMP
+                           crawled_at=CURRENT_TIMESTAMP
                    WHERE gallery_id=%s AND post_id=%s""",
                 (detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
-                 detail['body_text'], detail['body_hash'],
+                 detail['body_text'],
                  job['gall_id'], post_id),
             )
             cursor.execute(
@@ -542,28 +572,9 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
             )
             source_id = cursor.fetchone()['id']
 
-            if not detail['body_text']:
-                candidates = []
-            elif detail['author_id']:
-                author_basis = 'gallog_id'
-                cursor.execute(
-                    """SELECT * FROM crawl_review_source
-                       WHERE author_id=%s AND gallery_id<>%s AND id<>%s
-                         AND post_date >= %s""",
-                    (detail['author_id'], job['gall_id'], source_id, DETAIL_SINCE_DATE),
-                )
-                candidates = cursor.fetchall()
-            else:
-                author_basis = 'anonymous_hint'
-                cursor.execute(
-                    """SELECT * FROM crawl_review_source
-                       WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
-                         AND post_date >= %s
-                         AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
-                    (job['gall_id'], source_id, DETAIL_SINCE_DATE, detail['nickname'] or nickname,
-                     detail['ip_prefix'], detail['body_hash']),
-                )
-                candidates = cursor.fetchall()
+            author_basis, candidates = findBodyCandidates(
+                cursor, job['gall_id'], source_id, nickname, detail,
+            )
 
             observed = []
             for candidate in candidates:

@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 
 public class OtherReviewRepositoryImpl extends BaseReviewCustomRepositoryImpl<OtherReview> implements BaseReviewCustomRepository<OtherReview> {
     public OtherReviewRepositoryImpl(JPAQueryFactory queryFactory, EntityManager entityManager) {
+        // idx_crawl_post_id supports this lookup despite COLLATE on cs.db_category.
         super(queryFactory, entityManager, QOtherReview.otherReview,
                 QOtherReview.otherReview.title, QOtherReview.otherReview.nickname,
                 QOtherReview.otherReview.category, "category",
