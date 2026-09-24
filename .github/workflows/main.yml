@@ -1,28 +1,29 @@
-name: CI
+name: Backend CI
 
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/review-api
+
     steps:
-      - name: Deploy backend
-        uses: appleboy/ssh-action@v1.2.5
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          host: ${{ secrets.HOSTNAME }}
-          username: ubuntu
-          key: ${{ secrets.IDENTITYFILE }}
-          port: 2077
-          command_timeout: 30m
-          script: |
-            set -euo pipefail
-            cd /home/ubuntu/whiskey
-            git pull origin main
-            cd /home/ubuntu/whiskey/backend/review-api
-            ./gradlew build -x test
-            cd /home/ubuntu/whiskey
-            docker compose up --build -d --no-deps backend_lts
-            docker image prune -f
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Run backend tests
+        run: ./gradlew test --no-daemon

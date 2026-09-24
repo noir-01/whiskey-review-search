@@ -49,6 +49,7 @@ public class ReviewController {
             @RequestParam(required = false) String age,
             @RequestParam(required = false) String nickname,
             @RequestParam(required = false) String notWord,
+            @RequestParam(required = false) String gallId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "id") String sortField,
@@ -58,6 +59,7 @@ public class ReviewController {
         Sort sort = Sort.by(sortDirection, sortField);
         PageRequest pageRequest = PageRequest.of(page, size, sort);
 
-        return liquorReviewService.searchDtoWithPaging(andWords, orWords, age, nickname, notWord, pageRequest);
+        return liquorReviewService.searchDtoWithPagingByGallId(
+                andWords, orWords, age, gallId, nickname, notWord, pageRequest);
     }
 }

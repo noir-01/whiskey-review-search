@@ -44,13 +44,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from gallery_master import GALLERY_MASTER
-from duplicate_monitor import extract_detail, similarity, same_images, title_similarity
-
-LIQUOR_REVIEW_TAB_KEYS = tuple(
-    job['tab_key'] for job in GALLERY_MASTER
-    if job.get('storage') == 'liquor_review'
-)
-LIQUOR_DEDUP_TAB_KEYS = {'oaksusu-other'}
+from duplicate_monitor import extract_detail, similarity, title_similarity
 
 
 class CrawlBlockedError(RuntimeError):
@@ -67,6 +61,9 @@ MAX_DETAIL_REQUESTS = int(os.getenv('CRAWL_MAX_DETAIL_REQUESTS', '2000'))
 DETAIL_LOOKBACK_DAYS = int(os.getenv('CRAWL_DETAIL_LOOKBACK_DAYS', '30'))
 TITLE_SIMILARITY_THRESHOLD = float(os.getenv('CRAWL_TITLE_SIMILARITY_THRESHOLD', '45'))
 MAX_TITLE_CANDIDATES = int(os.getenv('CRAWL_MAX_TITLE_CANDIDATES', '5'))
+AUTO_CONFIRM_SIMILARITY_THRESHOLD = float(
+    os.getenv('CRAWL_AUTO_CONFIRM_SIMILARITY_THRESHOLD', '95')
+)
 
 
 def getDetailSinceDate(now=None):
@@ -83,6 +80,22 @@ DETAIL_SINCE_DATE = getDetailSinceDate()
 def parsePostDate(value):
     date_format = '%y/%m/%d' if '/' in value else '%Y-%m-%d'
     return datetime.strptime(value, date_format).date()
+
+
+def parsePublishedAt(date_tag):
+    """Return DCInside's second-precision timestamp when it is available."""
+    title = (date_tag.get('title') or '').strip()
+    if title:
+        for date_format in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+            try:
+                return datetime.strptime(title, date_format)
+            except ValueError:
+                pass
+    value = date_tag.get_text(strip=True)
+    try:
+        return datetime.combine(parsePostDate(value), datetime.min.time())
+    except ValueError:
+        return None
 
 
 def fetchPage(session, url, request_kind):
@@ -261,15 +274,14 @@ def ensureMonitorTables():
             author_id VARCHAR(255),
             ip_prefix VARCHAR(64),
             body_text LONGTEXT,
-            body_hash CHAR(64),
-            image_urls TEXT,
             post_date DATE,
+            published_at DATETIME,
             crawled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY uq_crawl_source (gallery_id, post_id),
-            KEY idx_crawl_author (author_id),
-            KEY idx_crawl_body_hash (body_hash),
-            KEY idx_crawl_anon (nickname, ip_prefix)
+            KEY idx_crawl_author_date (author_id, post_date),
+            KEY idx_crawl_nickname_date (nickname, post_date),
+            KEY idx_crawl_post_id (post_id)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
         """CREATE TABLE IF NOT EXISTS crawl_duplicate_candidate (
             id BIGINT NOT NULL AUTO_INCREMENT,
@@ -280,32 +292,82 @@ def ensureMonitorTables():
             ratio_score DECIMAL(5,2) NOT NULL,
             partial_score DECIMAL(5,2) NOT NULL,
             length_ratio DECIMAL(6,5) NOT NULL,
-            same_images BOOLEAN NOT NULL DEFAULT FALSE,
             status VARCHAR(32) NOT NULL DEFAULT 'observed',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY uq_candidate_pair (source_id, candidate_source_id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
+        """CREATE TABLE IF NOT EXISTS review_duplicate_group (
+            id BIGINT NOT NULL AUTO_INCREMENT,
+            status VARCHAR(32) NOT NULL DEFAULT 'active',
+            merged_into_group_id BIGINT,
+            confidence_score DECIMAL(5,2) NOT NULL,
+            rule_version VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_duplicate_group_status (status)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
+        """CREATE TABLE IF NOT EXISTS review_duplicate_member (
+            source_id BIGINT NOT NULL,
+            group_id BIGINT NOT NULL,
+            confidence_score DECIMAL(5,2) NOT NULL,
+            assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (source_id),
+            KEY idx_duplicate_member_group (group_id, source_id)
+        ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
+        """CREATE TABLE IF NOT EXISTS review_duplicate_history (
+            id BIGINT NOT NULL AUTO_INCREMENT,
+            source_id BIGINT NOT NULL,
+            previous_group_id BIGINT,
+            new_group_id BIGINT,
+            action VARCHAR(32) NOT NULL,
+            confidence_score DECIMAL(5,2) NOT NULL,
+            rule_version VARCHAR(32) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_duplicate_history_source (source_id, created_at)
         ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci""",
     )
     with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
             for statement in statements:
                 cursor.execute(statement)
+            cursor.execute(
+                "ALTER TABLE crawl_review_source ADD COLUMN IF NOT EXISTS published_at DATETIME NULL AFTER post_date"
+            )
+            cursor.execute(
+                "ALTER TABLE crawl_review_source ADD INDEX IF NOT EXISTS idx_crawl_post_id (post_id)"
+            )
+            # Equality columns precede the date range used to shortlist candidates.
+            # Keep post_id/source keys for review and source-identity joins.
+            cursor.execute(
+                "ALTER TABLE crawl_review_source "
+                "ADD INDEX IF NOT EXISTS idx_crawl_author_date (author_id,post_date), "
+                "ADD INDEX IF NOT EXISTS idx_crawl_nickname_date (nickname,post_date), "
+                "DROP INDEX IF EXISTS idx_crawl_author, "
+                "DROP INDEX IF EXISTS idx_crawl_anon, "
+                "DROP INDEX IF EXISTS idx_crawl_anon_date, "
+                "DROP INDEX IF EXISTS idx_crawl_storage, "
+                "DROP INDEX IF EXISTS idx_crawl_body_hash, "
+                "DROP COLUMN IF EXISTS body_hash"
+            )
         conn.commit()
 
 
-def findTitleCandidates(job, post_id, title, nickname, post_date):
+def findTitleCandidates(job, post_id, title, nickname, post_date, published_at):
     """Persist list metadata and shortlist without requesting a detail page."""
     with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """INSERT INTO crawl_review_source
-                   (gallery_id,post_id,tab_key,db_category,title,nickname,post_date)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s)
+                   (gallery_id,post_id,tab_key,db_category,title,nickname,post_date,published_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                    ON DUPLICATE KEY UPDATE title=VALUES(title), nickname=VALUES(nickname),
-                                           post_date=VALUES(post_date)""",
+                                           post_date=VALUES(post_date),
+                                           published_at=COALESCE(VALUES(published_at),published_at)""",
                 (job['gall_id'], post_id, job['tab_key'], job['db_category'],
-                 title, nickname, post_date),
+                 title, nickname, post_date, published_at),
             )
             cursor.execute(
                 """SELECT id,gallery_id,post_id,title,nickname,body_text
@@ -336,19 +398,129 @@ def hydrateTitleCandidates(title_candidates, session, report):
         response = fetchPage(session, url, 'detail')
         detail = extract_detail(response.text)
         if not detail['body_text']:
+            if detail['pum_source']:
+                logging.info(
+                    "퍼온 글 후보의 빈 본문을 차단으로 판단하지 않습니다: %s -> %s/%s",
+                    url, detail['pum_source']['gallery_id'], detail['pum_source']['post_id'],
+                )
+                continue
             raise CrawlBlockedError(f"DCInside detail body was not found ({url})")
         with getConnection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """UPDATE crawl_review_source
                        SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
-                           body_hash=%s,image_urls=%s,crawled_at=CURRENT_TIMESTAMP
+                           crawled_at=CURRENT_TIMESTAMP
                        WHERE id=%s""",
                     (detail['nickname'] or candidate['nickname'], detail['author_id'],
-                     detail['ip_prefix'], detail['body_text'], detail['body_hash'],
-                     detail['image_urls'], candidate['id']),
+                     detail['ip_prefix'], detail['body_text'],
+                     candidate['id']),
                 )
             conn.commit()
+
+
+def assignDuplicateGroup(cursor, left_source_id, right_source_id, confidence):
+    """Assign two confidently matching sources to one group and retain merge history."""
+    cursor.execute(
+        """SELECT source_id,group_id FROM review_duplicate_member
+           WHERE source_id IN (%s,%s)""",
+        (left_source_id, right_source_id),
+    )
+    memberships = {row['source_id']: row['group_id'] for row in cursor.fetchall()}
+    group_ids = sorted(set(memberships.values()))
+
+    if not group_ids:
+        cursor.execute(
+            """INSERT INTO review_duplicate_group
+               (confidence_score,rule_version) VALUES (%s,'text-v1')""",
+            (confidence,),
+        )
+        target_group_id = cursor.lastrowid
+    else:
+        target_group_id = group_ids[0]
+
+    if len(group_ids) > 1:
+        for merged_group_id in group_ids[1:]:
+            cursor.execute(
+                """SELECT source_id FROM review_duplicate_member WHERE group_id=%s""",
+                (merged_group_id,),
+            )
+            moved_source_ids = [row['source_id'] for row in cursor.fetchall()]
+            cursor.execute(
+                """UPDATE review_duplicate_member SET group_id=%s,
+                       confidence_score=GREATEST(confidence_score,%s)
+                   WHERE group_id=%s""",
+                (target_group_id, confidence, merged_group_id),
+            )
+            for moved_source_id in moved_source_ids:
+                cursor.execute(
+                    """INSERT INTO review_duplicate_history
+                       (source_id,previous_group_id,new_group_id,action,confidence_score,rule_version)
+                       VALUES (%s,%s,%s,'merge',%s,'text-v1')""",
+                    (moved_source_id, merged_group_id, target_group_id, confidence),
+                )
+            cursor.execute(
+                """UPDATE review_duplicate_group SET status='merged',merged_into_group_id=%s
+                   WHERE id=%s""",
+                (target_group_id, merged_group_id),
+            )
+
+    for source_id in (left_source_id, right_source_id):
+        if source_id in memberships:
+            continue
+        cursor.execute(
+            """INSERT INTO review_duplicate_member
+               (source_id,group_id,confidence_score) VALUES (%s,%s,%s)""",
+            (source_id, target_group_id, confidence),
+        )
+        cursor.execute(
+            """INSERT INTO review_duplicate_history
+               (source_id,new_group_id,action,confidence_score,rule_version)
+               VALUES (%s,%s,'assign',%s,'text-v1')""",
+            (source_id, target_group_id, confidence),
+        )
+
+
+def backfillConfirmedDuplicateGroups():
+    """Promote existing high-confidence candidates without discarding candidate history."""
+    with getConnection(dict_cursor=True) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """SELECT source_id,candidate_source_id,similarity_score
+                   FROM crawl_duplicate_candidate
+                   WHERE similarity_score >= %s""",
+                (AUTO_CONFIRM_SIMILARITY_THRESHOLD,),
+            )
+            for candidate in cursor.fetchall():
+                assignDuplicateGroup(
+                    cursor, candidate['source_id'], candidate['candidate_source_id'],
+                    candidate['similarity_score'],
+                )
+                cursor.execute(
+                    """UPDATE crawl_duplicate_candidate SET status='auto_confirmed'
+                       WHERE source_id=%s AND candidate_source_id=%s""",
+                    (candidate['source_id'], candidate['candidate_source_id']),
+                )
+        conn.commit()
+
+
+def findBodyCandidates(cursor, gallery_id, source_id, nickname, detail):
+    """Shortlist by author hints and date; neither IP nor exact text is identity."""
+    if detail['author_id']:
+        cursor.execute(
+            """SELECT id,gallery_id,post_id,title,body_text FROM crawl_review_source
+               WHERE author_id=%s AND gallery_id<>%s AND id<>%s
+                 AND post_date >= %s""",
+            (detail['author_id'], gallery_id, source_id, DETAIL_SINCE_DATE),
+        )
+        return 'gallog_id', cursor.fetchall()
+    cursor.execute(
+        """SELECT id,gallery_id,post_id,title,body_text FROM crawl_review_source
+           WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
+             AND post_date >= %s AND nickname=%s""",
+        (gallery_id, source_id, DETAIL_SINCE_DATE, detail['nickname'] or nickname),
+    )
+    return 'anonymous_hint', cursor.fetchall()
 
 
 def collectAndCompareSource(job, post_id, title, nickname, post_date, session, report,
@@ -375,6 +547,10 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
     response = fetchPage(session, url, 'detail')
     detail = extract_detail(response.text)
     if not detail['body_text']:
+        if detail['pum_source']:
+            return confirmPumDuplicate(
+                job, post_id, title, nickname, detail, url,
+            )
         raise CrawlBlockedError(f"DCInside detail body was not found ({url})")
 
     hydrateTitleCandidates(title_candidates, session, report)
@@ -383,11 +559,11 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
         with conn.cursor() as cursor:
             cursor.execute(
                 """UPDATE crawl_review_source
-                   SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
-                       body_hash=%s,image_urls=%s,crawled_at=CURRENT_TIMESTAMP
+                       SET nickname=%s,author_id=%s,ip_prefix=%s,body_text=%s,
+                           crawled_at=CURRENT_TIMESTAMP
                    WHERE gallery_id=%s AND post_id=%s""",
                 (detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
-                 detail['body_text'], detail['body_hash'], detail['image_urls'],
+                 detail['body_text'],
                  job['gall_id'], post_id),
             )
             cursor.execute(
@@ -396,47 +572,36 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
             )
             source_id = cursor.fetchone()['id']
 
-            if not detail['body_text']:
-                candidates = []
-            elif detail['author_id']:
-                author_basis = 'gallog_id'
-                cursor.execute(
-                    """SELECT * FROM crawl_review_source
-                       WHERE author_id=%s AND gallery_id<>%s AND id<>%s
-                         AND post_date >= %s""",
-                    (detail['author_id'], job['gall_id'], source_id, DETAIL_SINCE_DATE),
-                )
-                candidates = cursor.fetchall()
-            else:
-                author_basis = 'anonymous_hint'
-                cursor.execute(
-                    """SELECT * FROM crawl_review_source
-                       WHERE author_id IS NULL AND gallery_id<>%s AND id<>%s
-                         AND post_date >= %s
-                         AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
-                    (job['gall_id'], source_id, DETAIL_SINCE_DATE, detail['nickname'] or nickname,
-                     detail['ip_prefix'], detail['body_hash']),
-                )
-                candidates = cursor.fetchall()
+            author_basis, candidates = findBodyCandidates(
+                cursor, job['gall_id'], source_id, nickname, detail,
+            )
 
             observed = []
             for candidate in candidates:
                 scores = similarity(detail['body_text'], candidate['body_text'])
-                images_equal = same_images(detail['image_urls'], candidate['image_urls'])
-                # Image URLs can change when the same image is uploaded again, so
-                # candidate detection is based on normalized text similarity only.
                 if scores['score'] < 70:
                     continue
                 left_id, right_id = sorted((source_id, candidate['id']))
                 cursor.execute(
-                    """INSERT IGNORE INTO crawl_duplicate_candidate
+                    """INSERT INTO crawl_duplicate_candidate
                        (source_id,candidate_source_id,author_basis,similarity_score,
-                        ratio_score,partial_score,length_ratio,same_images)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        ratio_score,partial_score,length_ratio)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)
+                       ON DUPLICATE KEY UPDATE similarity_score=VALUES(similarity_score),
+                           ratio_score=VALUES(ratio_score), partial_score=VALUES(partial_score),
+                           length_ratio=VALUES(length_ratio)""",
                     (left_id, right_id, author_basis, scores['score'], scores['ratio'],
-                     scores['partial_ratio'], scores['length_ratio'], images_equal),
+                     scores['partial_ratio'], scores['length_ratio']),
                 )
-                if cursor.rowcount:
+                is_new_candidate = cursor.rowcount == 1
+                if scores['score'] >= AUTO_CONFIRM_SIMILARITY_THRESHOLD:
+                    assignDuplicateGroup(cursor, left_id, right_id, scores['score'])
+                    cursor.execute(
+                        """UPDATE crawl_duplicate_candidate SET status='auto_confirmed'
+                           WHERE source_id=%s AND candidate_source_id=%s""",
+                        (left_id, right_id),
+                    )
+                if is_new_candidate:
                     observed.append({
                         'score': scores['score'],
                         'author_basis': author_basis,
@@ -449,57 +614,75 @@ def collectAndCompareSource(job, post_id, title, nickname, post_date, session, r
     return observed
 
 
-def hasLiquorDuplicate(job, post_id):
-    """Apply the existing author/body similarity rule against liquor reviews."""
-    if job['tab_key'] not in LIQUOR_DEDUP_TAB_KEYS or not LIQUOR_REVIEW_TAB_KEYS:
-        return False
-
-    placeholders = ", ".join(["%s"] * len(LIQUOR_REVIEW_TAB_KEYS))
+def confirmPumDuplicate(job, post_id, title, nickname, detail, url):
+    """Confirm a DCInside '퍼오기' post against its explicitly referenced source."""
+    pum_source = detail['pum_source']
     with getConnection(dict_cursor=True) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                "SELECT * FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
+                """UPDATE crawl_review_source
+                       SET nickname=%s,author_id=%s,ip_prefix=%s,crawled_at=CURRENT_TIMESTAMP
+                   WHERE gallery_id=%s AND post_id=%s""",
+                (detail['nickname'] or nickname, detail['author_id'], detail['ip_prefix'],
+                 job['gall_id'], post_id),
+            )
+            cursor.execute(
+                "SELECT id FROM crawl_review_source WHERE gallery_id=%s AND post_id=%s",
                 (job['gall_id'], post_id),
             )
-            source = cursor.fetchone()
-            if not source or not source['body_text']:
-                return False
-
-            if source['author_id']:
-                cursor.execute(
-                    f"""SELECT * FROM crawl_review_source
-                         WHERE author_id=%s AND id<>%s AND post_date >= %s
-                           AND tab_key IN ({placeholders})""",
-                    (source['author_id'], source['id'], DETAIL_SINCE_DATE,
-                     *LIQUOR_REVIEW_TAB_KEYS),
-                )
-            else:
-                cursor.execute(
-                    f"""SELECT * FROM crawl_review_source
-                         WHERE author_id IS NULL AND id<>%s AND post_date >= %s
-                           AND tab_key IN ({placeholders})
-                           AND ((nickname=%s AND ip_prefix <=> %s) OR body_hash=%s)""",
-                    (source['id'], DETAIL_SINCE_DATE, *LIQUOR_REVIEW_TAB_KEYS,
-                     source['nickname'], source['ip_prefix'], source['body_hash']),
-                )
-            candidates = cursor.fetchall()
-
-    return any(
-        candidate['body_text']
-        and similarity(source['body_text'], candidate['body_text'])['score'] >= 70
-        for candidate in candidates
-    )
-
-
-def deleteDuplicateFromOtherReview(job, post_id):
-    with getConnection() as conn:
-        with conn.cursor() as cursor:
+            current_source = cursor.fetchone()
             cursor.execute(
-                "DELETE FROM other_review WHERE category=%s AND id=%s",
-                (job['db_category'], post_id),
+                """SELECT id,title FROM crawl_review_source
+                   WHERE gallery_id=%s AND post_id=%s""",
+                (pum_source['gallery_id'], pum_source['post_id']),
             )
+            original_source = cursor.fetchone()
+
+            if not current_source or not original_source:
+                logging.warning(
+                    "퍼온 글 원문이 수집 테이블에 없어 중복 연결을 보류합니다: %s -> %s/%s",
+                    url, pum_source['gallery_id'], pum_source['post_id'],
+                )
+                conn.commit()
+                return []
+
+            scores = similarity(title, original_source['title'])
+            if scores['score'] < TITLE_SIMILARITY_THRESHOLD:
+                logging.warning(
+                    "퍼온 글의 제목 유사도가 낮아 중복 연결을 보류합니다: %.1f %s",
+                    scores['score'], url,
+                )
+                conn.commit()
+                return []
+
+            left_id, right_id = sorted((current_source['id'], original_source['id']))
+            cursor.execute(
+                """INSERT INTO crawl_duplicate_candidate
+                   (source_id,candidate_source_id,author_basis,similarity_score,
+                    ratio_score,partial_score,length_ratio,status)
+                   VALUES (%s,%s,'pum_repost',%s,%s,%s,%s,'auto_confirmed')
+                   ON DUPLICATE KEY UPDATE author_basis='pum_repost',
+                       similarity_score=VALUES(similarity_score),ratio_score=VALUES(ratio_score),
+                       partial_score=VALUES(partial_score),length_ratio=VALUES(length_ratio),
+                       status='auto_confirmed'""",
+                (left_id, right_id, scores['score'], scores['ratio'],
+                 scores['partial_ratio'], scores['length_ratio']),
+            )
+            is_new_candidate = cursor.rowcount == 1
+            assignDuplicateGroup(cursor, left_id, right_id, scores['score'])
         conn.commit()
 
+    if not is_new_candidate:
+        return []
+    return [{
+        'score': scores['score'],
+        'author_basis': 'pum_repost',
+        'new_title': title,
+        'new_url': url,
+        'old_title': original_source['title'],
+        'old_url': ("https://gall.dcinside.com/mgallery/board/view/"
+                    f"?id={pum_source['gallery_id']}&no={pum_source['post_id']}"),
+    }]
 
 
 def crawlByPage(job, dataList, report, findLastPage=False):
@@ -576,6 +759,7 @@ def crawlByPage(job, dataList, report, findLastPage=False):
 
             else:
                 postDate =  date_tag.text
+            publishedAt = parsePublishedAt(date_tag)
 
             # 추천 수 추출
             recommend_tag = i.find('td', class_='gall_recommend')
@@ -607,7 +791,7 @@ def crawlByPage(job, dataList, report, findLastPage=False):
             if postDate_datetime >= DETAIL_SINCE_DATE and not report['detail_limit_reached']:
                 try:
                     title_candidates = findTitleCandidates(
-                        job, id, title.strip(), nickname, postDate
+                        job, id, title.strip(), nickname, postDate, publishedAt
                     )
                     if not title_candidates:
                         report['detail_prefilter_skips'] += 1
@@ -619,13 +803,6 @@ def crawlByPage(job, dataList, report, findLastPage=False):
                         report['new_sources'] += 1
                         report['candidates'].extend(observed)
 
-                    if hasLiquorDuplicate(job, id):
-                        dataList.pop()
-                        deleteDuplicateFromOtherReview(job, id)
-                        logging.info(
-                            "Liquor duplicate excluded from other_review: %s/%s",
-                            liquor, id,
-                        )
                 except CrawlBlockedError:
                     raise
                 except Exception as e:
@@ -680,6 +857,7 @@ def sqlUpload(dataList,job):
 
 if __name__ == '__main__':
     ensureMonitorTables()
+    backfillConfirmedDuplicateGroups()
     report = {
         'new_sources': 0,
         'candidates': [],
