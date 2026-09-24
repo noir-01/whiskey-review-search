@@ -26,7 +26,9 @@ public class LiquorReviewRepositoryImpl extends BaseReviewCustomRepositoryImpl<L
                         + "LEFT JOIN review_search_duplicate sd ON sd.review_id=r.id",
                 "COALESCE(CONCAT('legacy:',sd.group_key),CONCAT('id:',r.id))",
                 "CASE WHEN r.gallery_id='whiskey' THEN 0 ELSE 1 END",
-                "(sd.review_id IS NULL OR sd.is_representative=1) AND "
+                // Confirmed groups choose their own representative; the title-only
+                // fallback must not veto that choice and hide the whole group.
+                "(dm.group_id IS NOT NULL OR sd.review_id IS NULL OR sd.is_representative=1) AND "
                         + "(dm.group_id IS NULL OR NOT EXISTS ("
                         + "SELECT 1 FROM review_duplicate_member peer_dm "
                         + "JOIN crawl_review_source peer_cs ON peer_cs.id=peer_dm.source_id "
